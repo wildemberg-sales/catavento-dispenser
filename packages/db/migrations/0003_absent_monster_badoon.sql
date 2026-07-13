@@ -1,0 +1,1 @@
+CREATE INDEX "work_logs_completed_at_idx" ON "work_logs" USING btree ("completed_at");

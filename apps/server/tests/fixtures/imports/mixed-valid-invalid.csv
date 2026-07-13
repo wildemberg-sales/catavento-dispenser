@@ -1,0 +1,6 @@
+SKU,Fonte,Nome
+ITEM-1,mercado_livre,Produto A
+,shopee,Produto sem SKU
+ITEM-3,aliexpress,Produto fonte desconhecida
+ITEM-1,mercado_livre,Produto duplicado
+ITEM-5,ebay,Produto valido

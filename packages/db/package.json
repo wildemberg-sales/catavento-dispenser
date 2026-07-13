@@ -1,0 +1,33 @@
+{
+  "name": "@catavento/db",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "scripts": {
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "tsx src/migrate.ts",
+    "db:seed": "tsx src/seed/run-seed.ts",
+    "db:studio": "drizzle-kit studio",
+    "typecheck": "tsc --noEmit",
+    "test:unit": "echo 'no unit tests in @catavento/db'",
+    "test:integration": "vitest run tests/schema.spec.ts",
+    "test": "vitest run tests/schema.spec.ts",
+    "test:coverage": "vitest run tests/schema.spec.ts --coverage"
+  },
+  "dependencies": {
+    "argon2": "^0.44.0",
+    "drizzle-orm": "^0.45.2",
+    "pg": "^8.22.0"
+  },
+  "devDependencies": {
+    "drizzle-kit": "^0.31.10",
+    "tsx": "^4.19.0",
+    "vitest": "^4.1.10",
+    "@vitest/coverage-v8": "^4.1.10",
+    "@testcontainers/postgresql": "^12.0.4",
+    "@types/pg": "^8.11.0",
+    "typescript": "^5.7.0"
+  }
+}
