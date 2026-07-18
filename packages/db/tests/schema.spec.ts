@@ -115,6 +115,24 @@ describe("db schema", () => {
     ).resolves.not.toThrow();
   });
 
+  it("products.assembly_items tem default de lista vazia e persiste uma lista de itens", async () => {
+    const [semItens] = await db.insert(schema.products).values({ name: "Bolo sem lista" }).returning();
+    expect(semItens!.assemblyItems).toEqual([]);
+
+    const [comItens] = await db
+      .insert(schema.products)
+      .values({
+        name: "Bolo com lista",
+        assemblyItems: ["Base de isopor 25cm", "Cobertura de pasta americana branca", "Fita de cetim vermelha"],
+      })
+      .returning();
+    expect(comItens!.assemblyItems).toEqual([
+      "Base de isopor 25cm",
+      "Cobertura de pasta americana branca",
+      "Fita de cetim vermelha",
+    ]);
+  });
+
   it("rodar as migrations uma segunda vez é idempotente", async () => {
     await expect(migrate(db, { migrationsFolder })).resolves.not.toThrow();
   });

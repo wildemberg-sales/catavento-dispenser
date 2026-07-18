@@ -1,0 +1,1 @@
+ALTER TABLE "products" ADD COLUMN "assembly_items" jsonb DEFAULT '[]'::jsonb NOT NULL;

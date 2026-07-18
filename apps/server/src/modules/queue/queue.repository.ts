@@ -206,6 +206,7 @@ export function queueRepository(db: DbInstance) {
         name: product.name,
         description: product.description,
         attributes: product.attributes,
+        assemblyItems: product.assemblyItems,
         images: images.map((img) => ({ url: img.url, position: img.position })),
       };
     },

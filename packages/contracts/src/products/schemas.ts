@@ -24,6 +24,8 @@ export type ProductImageDTO = z.infer<typeof productImageDtoSchema>;
 
 export const productAttributesSchema = z.record(z.string(), z.unknown());
 
+export const assemblyItemsSchema = z.array(z.string().min(1).max(300)).max(50);
+
 function noDuplicateSkuSources(skus: ProductSkuInput[]): boolean {
   const sources = skus.map((s) => s.source);
   return new Set(sources).size === sources.length;
@@ -33,6 +35,7 @@ export const createProductInputSchema = z.object({
   name: z.string().min(1).max(300),
   description: z.string().max(5000).optional(),
   attributes: productAttributesSchema.default({}),
+  assemblyItems: assemblyItemsSchema.default([]),
   skus: z.array(productSkuInputSchema).default([]).refine(noDuplicateSkuSources, {
     message: "Um produto não pode ter mais de um SKU para a mesma fonte.",
   }),
@@ -43,6 +46,7 @@ export const updateProductInputSchema = z.object({
   name: z.string().min(1).max(300).optional(),
   description: z.string().max(5000).optional(),
   attributes: productAttributesSchema.optional(),
+  assemblyItems: assemblyItemsSchema.optional(),
   isActive: z.boolean().optional(),
   skus: z.array(productSkuInputSchema).refine(noDuplicateSkuSources, {
     message: "Um produto não pode ter mais de um SKU para a mesma fonte.",
@@ -55,6 +59,7 @@ export const productDtoSchema = z.object({
   name: z.string(),
   description: z.string().nullable(),
   attributes: z.record(z.string(), z.unknown()),
+  assemblyItems: z.array(z.string()),
   isActive: z.boolean(),
   skus: z.array(productSkuDtoSchema),
   images: z.array(productImageDtoSchema),

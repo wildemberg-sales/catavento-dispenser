@@ -35,6 +35,31 @@ describe("products schemas", () => {
     expect(result.success).toBe(true);
   });
 
+  it("createProductInputSchema aceita assemblyItems e usa lista vazia como default", () => {
+    const comItens = createProductInputSchema.safeParse({
+      name: "Bolo de aniversário",
+      assemblyItems: ["Base de isopor 25cm", "Cobertura de pasta americana branca"],
+    });
+    expect(comItens.success).toBe(true);
+    if (comItens.success) {
+      expect(comItens.data.assemblyItems).toEqual(["Base de isopor 25cm", "Cobertura de pasta americana branca"]);
+    }
+
+    const semItens = createProductInputSchema.safeParse({ name: "Bolo sem lista" });
+    expect(semItens.success).toBe(true);
+    if (semItens.success) {
+      expect(semItens.data.assemblyItems).toEqual([]);
+    }
+  });
+
+  it("createProductInputSchema rejeita item de montagem vazio na lista", () => {
+    const result = createProductInputSchema.safeParse({
+      name: "Bolo X",
+      assemblyItems: ["Base de isopor", ""],
+    });
+    expect(result.success).toBe(false);
+  });
+
   it("listProductsQuerySchema aplica defaults de paginação", () => {
     const result = listProductsQuerySchema.safeParse({});
     expect(result.success).toBe(true);

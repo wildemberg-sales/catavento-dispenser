@@ -13,6 +13,7 @@ export function productsService(deps: { repo: ProductsRepository }) {
         name: input.name,
         description: input.description,
         attributes: input.attributes,
+        assemblyItems: input.assemblyItems,
         createdBy,
       });
 
@@ -41,6 +42,7 @@ export function productsService(deps: { repo: ProductsRepository }) {
         name: input.name,
         description: input.description,
         attributes: input.attributes,
+        assemblyItems: input.assemblyItems,
         isActive: input.isActive,
       });
 

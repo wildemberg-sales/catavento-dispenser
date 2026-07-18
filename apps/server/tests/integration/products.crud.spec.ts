@@ -145,6 +145,37 @@ describe("CRUD de produtos (admin)", () => {
     await app.close();
   });
 
+  it("cria produto com assemblyItems e permite atualizar a lista via PUT", async () => {
+    await createUser(ctx.db, { username: "admin-bolo", role: "admin" });
+    const app = await buildTestApp(ctx.db);
+    const token = await loginAs(app, "admin-bolo");
+
+    const createResponse = await app.inject({
+      method: "POST",
+      url: "/admin/products",
+      headers: { authorization: `Bearer ${token}` },
+      payload: {
+        name: "Bolo fake 2 andares",
+        assemblyItems: ["Base de isopor 25cm", "Cobertura de pasta americana branca"],
+      },
+    });
+    expect(createResponse.statusCode).toBe(201);
+    expect(createResponse.json().assemblyItems).toEqual([
+      "Base de isopor 25cm",
+      "Cobertura de pasta americana branca",
+    ]);
+
+    const productId = createResponse.json().id;
+    const updateResponse = await app.inject({
+      method: "PUT",
+      url: `/admin/products/${productId}`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: { assemblyItems: ["Fita de cetim vermelha"] },
+    });
+    expect(updateResponse.json().assemblyItems).toEqual(["Fita de cetim vermelha"]);
+    await app.close();
+  });
+
   it("PUT sem skus preserva os SKUs existentes; PUT com skus:[] remove todos", async () => {
     await createUser(ctx.db, { username: "admin4", role: "admin" });
     const product = await createProduct(ctx.db, { name: "Produto Z" });

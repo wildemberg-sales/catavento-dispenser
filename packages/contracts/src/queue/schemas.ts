@@ -22,6 +22,7 @@ export const linkedProductSchema = z.object({
   name: z.string(),
   description: z.string().nullable(),
   attributes: z.record(z.string(), z.unknown()),
+  assemblyItems: z.array(z.string()),
   images: z.array(z.object({ url: z.string(), position: z.number().int() })),
 });
 export type LinkedProduct = z.infer<typeof linkedProductSchema>;

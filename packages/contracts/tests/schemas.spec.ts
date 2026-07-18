@@ -121,6 +121,7 @@ describe("queue schemas", () => {
         name: "Produto vinculado",
         description: null,
         attributes: {},
+        assemblyItems: ["Base de isopor 25cm"],
         images: [{ url: "http://x/1.png", position: 0 }],
       },
     });

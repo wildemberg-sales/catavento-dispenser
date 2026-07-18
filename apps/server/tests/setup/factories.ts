@@ -83,7 +83,13 @@ export async function createQueueItem(
 
 export async function createProduct(
   db: Db,
-  overrides?: Partial<{ name: string; description: string; attributes: Record<string, unknown>; isActive: boolean }>
+  overrides?: Partial<{
+    name: string;
+    description: string;
+    attributes: Record<string, unknown>;
+    assemblyItems: string[];
+    isActive: boolean;
+  }>
 ) {
   const [product] = await db
     .insert(schema.products)
@@ -91,6 +97,7 @@ export async function createProduct(
       name: overrides?.name ?? "Produto de Teste",
       description: overrides?.description,
       attributes: overrides?.attributes ?? {},
+      assemblyItems: overrides?.assemblyItems ?? [],
       isActive: overrides?.isActive ?? true,
     })
     .returning();

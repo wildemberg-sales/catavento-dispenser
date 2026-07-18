@@ -5,6 +5,7 @@ type ProductRow = {
   name: string;
   description: string | null;
   attributes: unknown;
+  assemblyItems: unknown;
   isActive: boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -19,6 +20,7 @@ export function toProductDto(product: ProductRow, skus: SkuRow[], images: ImageR
     name: product.name,
     description: product.description,
     attributes: product.attributes as Record<string, unknown>,
+    assemblyItems: product.assemblyItems as string[],
     isActive: product.isActive,
     skus: skus.map((s) => ({ id: s.id, source: s.source, sku: s.sku })),
     images: images

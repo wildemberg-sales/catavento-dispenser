@@ -8,6 +8,7 @@ export function productsRepository(db: DbInstance) {
       name: string;
       description?: string | undefined;
       attributes: Record<string, unknown>;
+      assemblyItems?: string[] | undefined;
       createdBy?: string | undefined;
     }) {
       const [product] = await db.insert(schema.products).values(data).returning();
@@ -51,6 +52,7 @@ export function productsRepository(db: DbInstance) {
         name: string | undefined;
         description: string | undefined;
         attributes: Record<string, unknown> | undefined;
+        assemblyItems: string[] | undefined;
         isActive: boolean | undefined;
       }>
     ) {

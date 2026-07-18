@@ -86,7 +86,10 @@ describe("GET /queue/current", () => {
 
   it("reidrata o item com os dados herdados do produto vinculado", async () => {
     await createUser(ctx.db, { username: "op5", role: "operator" });
-    const product = await createProduct(ctx.db, { name: "Produto Reidratado" });
+    const product = await createProduct(ctx.db, {
+      name: "Produto Reidratado",
+      assemblyItems: ["Base de isopor 25cm", "Cobertura de pasta americana branca"],
+    });
     const batch = await createImportBatch(ctx.db);
     await createQueueItem(ctx.db, { batchId: batch.id, productId: product.id });
     const app = await buildTestApp(ctx.db);
@@ -101,6 +104,10 @@ describe("GET /queue/current", () => {
     });
 
     expect(response.json().item.product.name).toBe("Produto Reidratado");
+    expect(response.json().item.product.assemblyItems).toEqual([
+      "Base de isopor 25cm",
+      "Cobertura de pasta americana branca",
+    ]);
     await app.close();
   });
 });

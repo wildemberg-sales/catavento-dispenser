@@ -6,6 +6,7 @@ export type LinkedProductRow = {
   name: string;
   description: string | null;
   attributes: unknown;
+  assemblyItems: unknown;
   images: Array<{ url: string; position: number }>;
 };
 
@@ -16,6 +17,7 @@ export function toQueueItemDto(row: QueueItemRow, linkedProduct: LinkedProductRo
         name: linkedProduct.name,
         description: linkedProduct.description,
         attributes: linkedProduct.attributes as Record<string, unknown>,
+        assemblyItems: linkedProduct.assemblyItems as string[],
         images: linkedProduct.images
           .slice()
           .sort((a, b) => a.position - b.position)
