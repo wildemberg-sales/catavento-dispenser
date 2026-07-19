@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import {
   bigserial,
   index,
@@ -33,7 +34,16 @@ export const queueItems = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
-    index("queue_items_dequeue_idx").on(table.status, table.priority.desc(), table.sequence.asc()),
+    // Itens sem product_id vinculado sempre saem por último no dequeue
+    // (ver queue.repository.ts dequeueNext) — a expressão `(product_id IS
+    // NULL)` precisa liderar a ordenação do índice pra continuar servindo
+    // o ORDER BY sem sort adicional.
+    index("queue_items_dequeue_idx").on(
+      table.status,
+      sql`(${table.productId} IS NULL)`,
+      table.priority.desc(),
+      table.sequence.asc()
+    ),
     index("queue_items_product_id_idx").on(table.productId),
     index("queue_items_batch_id_idx").on(table.batchId),
   ]

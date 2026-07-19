@@ -1,9 +1,10 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { eq } from "drizzle-orm";
 import { schema } from "@catavento/db";
 import { startTestDb, stopTestDb, truncateAll, type TestDbContext } from "../setup/testcontainer.js";
 import { createUser } from "../setup/factories.js";
 import { buildTestApp } from "../setup/build-test-app.js";
+import { monitorBus } from "../../src/lib/monitor-bus.js";
 
 describe("POST /auth/login", () => {
   let ctx: TestDbContext;
@@ -93,6 +94,38 @@ describe("POST /auth/login", () => {
     });
 
     expect(response.statusCode).toBe(400);
+    await app.close();
+  });
+
+  it("publica operator_online quando um operador loga", async () => {
+    const user = await createUser(ctx.db, { username: "op-online", role: "operator" });
+    const app = await buildTestApp(ctx.db);
+    const publishSpy = vi.spyOn(monitorBus, "publish");
+
+    await app.inject({
+      method: "POST",
+      url: "/auth/login",
+      payload: { username: "op-online", password: "senha-de-teste-123" },
+    });
+
+    expect(publishSpy).toHaveBeenCalledWith({ type: "operator_online", payload: { operatorId: user.id } });
+    publishSpy.mockRestore();
+    await app.close();
+  });
+
+  it("NÃO publica operator_online quando um admin loga", async () => {
+    await createUser(ctx.db, { username: "admin-login", role: "admin" });
+    const app = await buildTestApp(ctx.db);
+    const publishSpy = vi.spyOn(monitorBus, "publish");
+
+    await app.inject({
+      method: "POST",
+      url: "/auth/login",
+      payload: { username: "admin-login", password: "senha-de-teste-123" },
+    });
+
+    expect(publishSpy).not.toHaveBeenCalledWith(expect.objectContaining({ type: "operator_online" }));
+    publishSpy.mockRestore();
     await app.close();
   });
 });
@@ -228,6 +261,40 @@ describe("POST /auth/logout", () => {
       payload: { refreshToken },
     });
     expect(refreshResponse.statusCode).toBe(401);
+    await app.close();
+  });
+
+  it("publica operator_offline quando um operador desloga", async () => {
+    const user = await createUser(ctx.db, { username: "op-offline", role: "operator" });
+    const app = await buildTestApp(ctx.db);
+    const loginResponse = await app.inject({
+      method: "POST",
+      url: "/auth/login",
+      payload: { username: "op-offline", password: "senha-de-teste-123" },
+    });
+    const { refreshToken } = loginResponse.json();
+    const publishSpy = vi.spyOn(monitorBus, "publish");
+
+    await app.inject({ method: "POST", url: "/auth/logout", payload: { refreshToken } });
+
+    expect(publishSpy).toHaveBeenCalledWith({ type: "operator_offline", payload: { operatorId: user.id } });
+    publishSpy.mockRestore();
+    await app.close();
+  });
+
+  it("não publica nada e continua retornando 204 ao deslogar com um refresh token já inválido", async () => {
+    const app = await buildTestApp(ctx.db);
+    const publishSpy = vi.spyOn(monitorBus, "publish");
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/auth/logout",
+      payload: { refreshToken: "token-que-nao-existe" },
+    });
+
+    expect(response.statusCode).toBe(204);
+    expect(publishSpy).not.toHaveBeenCalled();
+    publishSpy.mockRestore();
     await app.close();
   });
 });

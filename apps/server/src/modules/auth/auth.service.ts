@@ -3,6 +3,7 @@ import type { FastifyInstance } from "fastify";
 import type { AuthUser, TokenPair } from "@catavento/contracts/auth";
 import type { UsersRepository } from "../users/users.repository.js";
 import type { AuthRepository } from "./auth.repository.js";
+import type { MonitorBus } from "../../lib/monitor-bus.js";
 import { verifyPassword } from "./password.js";
 import { AccountDisabledError, InvalidCredentialsError, InvalidRefreshTokenError } from "../../lib/errors.js";
 
@@ -36,8 +37,9 @@ export function authService(deps: {
   app: FastifyInstance;
   usersRepo: UsersRepository;
   authRepo: AuthRepository;
+  bus: MonitorBus;
 }) {
-  const { app, usersRepo, authRepo } = deps;
+  const { app, usersRepo, authRepo, bus } = deps;
 
   async function issueTokenPair(user: UserRow): Promise<TokenPair> {
     const accessToken = app.jwt.sign({ sub: user.id, role: user.role, username: user.username });
@@ -68,6 +70,10 @@ export function authService(deps: {
         throw new AccountDisabledError();
       }
 
+      if (user.role === "operator") {
+        bus.publish({ type: "operator_online", payload: { operatorId: user.id } });
+      }
+
       return issueTokenPair(user);
     },
 
@@ -93,7 +99,15 @@ export function authService(deps: {
     },
 
     async logout(refreshToken: string): Promise<void> {
+      const stored = await authRepo.findActiveRefreshToken(refreshToken);
       await authRepo.revokeRefreshToken(refreshToken);
+
+      if (stored) {
+        const user = await usersRepo.findById(stored.userId);
+        if (user?.role === "operator") {
+          bus.publish({ type: "operator_offline", payload: { operatorId: user.id } });
+        }
+      }
     },
   };
 }

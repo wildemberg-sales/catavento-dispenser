@@ -36,6 +36,42 @@ describe("withMonitorEvents", () => {
     expect(publishSpy).not.toHaveBeenCalled();
   });
 
+  it("requeueItem publica queue_size_changed com o queueSize atual", async () => {
+    const mockService = { requeueItem: vi.fn().mockResolvedValue(undefined) } as never;
+    const bus = new MonitorBus();
+    const publishSpy = vi.spyOn(bus, "publish");
+    const mockRepo = { countPending: vi.fn().mockResolvedValue(4) } as never;
+
+    const wrapped = withMonitorEvents(mockService, bus, mockRepo);
+    await wrapped.requeueItem("item1");
+
+    expect(publishSpy).toHaveBeenCalledWith({ type: "queue_size_changed", payload: { queueSize: 4 } });
+  });
+
+  it("requeueItem NÃO publica evento quando o service lança erro", async () => {
+    const mockService = { requeueItem: vi.fn().mockRejectedValue(new Error("estado inválido")) } as never;
+    const bus = new MonitorBus();
+    const publishSpy = vi.spyOn(bus, "publish");
+    const mockRepo = { countPending: vi.fn() } as never;
+
+    const wrapped = withMonitorEvents(mockService, bus, mockRepo);
+    await expect(wrapped.requeueItem("item1")).rejects.toThrow("estado inválido");
+
+    expect(publishSpy).not.toHaveBeenCalled();
+  });
+
+  it("cancelItem publica queue_size_changed com o queueSize atual", async () => {
+    const mockService = { cancelItem: vi.fn().mockResolvedValue(undefined) } as never;
+    const bus = new MonitorBus();
+    const publishSpy = vi.spyOn(bus, "publish");
+    const mockRepo = { countPending: vi.fn().mockResolvedValue(2) } as never;
+
+    const wrapped = withMonitorEvents(mockService, bus, mockRepo);
+    await wrapped.cancelItem("item1");
+
+    expect(publishSpy).toHaveBeenCalledWith({ type: "queue_size_changed", payload: { queueSize: 2 } });
+  });
+
   it("completeItem publica item_completed com outcome completed", async () => {
     const mockService = { completeItem: vi.fn().mockResolvedValue(undefined) } as never;
     const bus = new MonitorBus();

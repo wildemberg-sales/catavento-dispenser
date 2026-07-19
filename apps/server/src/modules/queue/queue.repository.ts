@@ -1,5 +1,6 @@
 import { and, count, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { schema, type DbInstance } from "@catavento/db";
+import { findSuggestionsForItem } from "../products/suggestion.js";
 
 export type QueueItemRow = {
   id: string;
@@ -32,7 +33,9 @@ export function queueRepository(db: DbInstance) {
     // Dequeue atômico (Seção 5.1): SKIP LOCKED garante que dois operadores
     // concorrentes nunca peguem o mesmo item, sem bloqueio/espera. Não é
     // expressável no query builder fluente do Drizzle — SQL bruto dentro da
-    // transação.
+    // transação. Itens sem produto vinculado (product_id IS NULL) sempre vão
+    // pro fim da fila — não dá pra montar sem foto/checklist — mas mantêm a
+    // prioridade por loja e o FIFO entre si.
     async dequeueNext(operatorId: string): Promise<{ item: QueueItemRow; workLogId: string } | null> {
       return db.transaction(async (tx) => {
         const result = await tx.execute(sql`
@@ -40,7 +43,7 @@ export function queueRepository(db: DbInstance) {
             SELECT id
             FROM queue_items
             WHERE status = 'pending'
-            ORDER BY priority DESC, sequence ASC
+            ORDER BY (product_id IS NULL) ASC, priority DESC, sequence ASC
             FOR UPDATE SKIP LOCKED
             LIMIT 1
           )
@@ -149,6 +152,48 @@ export function queueRepository(db: DbInstance) {
           .offset(offset),
         db.select({ total: count() }).from(schema.queueItems).where(where),
       ]);
+      return { items, total: Number(totalRows[0]!.total) };
+    },
+
+    // Reconciliação global (cross-lote): mesma lógica de sugestão fuzzy do
+    // findUnlinkedWithSuggestions por-lote em imports.repository.ts, sem o
+    // filtro de batchId — pra alimentar uma tela única de "itens sem vínculo"
+    // vindos de qualquer importação. Ordenado do mais recente pro mais antigo:
+    // itens recém-chegados são os mais acionáveis (pedido ainda fresco); itens
+    // antigos sem vínculo já apareceram em rodadas anteriores da tela.
+    async findAllUnlinkedWithSuggestions(pagination: { page: number; pageSize: number }) {
+      const offset = (pagination.page - 1) * pagination.pageSize;
+      const where = sql`${schema.queueItems.productId} IS NULL`;
+      const [rows, totalRows] = await Promise.all([
+        db
+          .select({
+            id: schema.queueItems.id,
+            externalRef: schema.queueItems.externalRef,
+            source: schema.queueItems.source,
+            payload: schema.queueItems.payload,
+            batchId: schema.queueItems.batchId,
+            createdAt: schema.queueItems.createdAt,
+          })
+          .from(schema.queueItems)
+          .where(where)
+          .orderBy(desc(schema.queueItems.sequence))
+          .limit(pagination.pageSize)
+          .offset(offset),
+        db.select({ total: count() }).from(schema.queueItems).where(where),
+      ]);
+
+      const items = await Promise.all(
+        rows.map(async (row) => ({
+          id: row.id,
+          externalRef: row.externalRef,
+          source: row.source,
+          payload: row.payload as Record<string, unknown>,
+          batchId: row.batchId,
+          createdAt: row.createdAt,
+          suggestions: await findSuggestionsForItem(db, row.externalRef, row.payload as Record<string, unknown>),
+        }))
+      );
+
       return { items, total: Number(totalRows[0]!.total) };
     },
 

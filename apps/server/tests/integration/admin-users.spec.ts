@@ -105,6 +105,23 @@ describe("Gestão de usuários (admin)", () => {
     await app.close();
   });
 
+  it("lista usuários do mais recente pro mais antigo", async () => {
+    await createUser(ctx.db, { username: "admin-lista-ordem", role: "admin" });
+    await createUser(ctx.db, { username: "op-mais-antigo", role: "operator" });
+    const maisRecente = await createUser(ctx.db, { username: "op-mais-recente", role: "operator" });
+    const app = await buildTestApp(ctx.db);
+    const { accessToken } = await loginAs(app, "admin-lista-ordem");
+
+    const response = await app.inject({
+      method: "GET",
+      url: "/admin/users?role=operator",
+      headers: { authorization: `Bearer ${accessToken}` },
+    });
+
+    expect(response.json().items[0].id).toBe(maisRecente.id);
+    await app.close();
+  });
+
   it("desativa usuário e revoga os refresh tokens ativos dele", async () => {
     await createUser(ctx.db, { username: "admin4", role: "admin" });
     const operator = await createUser(ctx.db, { username: "op4", role: "operator" });

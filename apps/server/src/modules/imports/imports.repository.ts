@@ -2,6 +2,7 @@ import { and, asc, count, eq, sql } from "drizzle-orm";
 import { schema, type DbInstance } from "@catavento/db";
 import type { ColumnMapping, ImportSourceType, ImportStatus } from "@catavento/contracts/imports";
 import type { ValidatedRow } from "./row-validator.js";
+import { findSuggestionsForItem } from "../products/suggestion.js";
 
 export function importsRepository(db: DbInstance) {
   return {
@@ -160,7 +161,16 @@ export function importsRepository(db: DbInstance) {
     async findUnlinkedWithSuggestions(
       batchId: string,
       pagination: { page: number; pageSize: number }
-    ): Promise<{ items: Array<{ id: string; externalRef: string; source: string; payload: Record<string, unknown> }>; total: number }> {
+    ): Promise<{
+      items: Array<{
+        id: string;
+        externalRef: string;
+        source: string;
+        payload: Record<string, unknown>;
+        createdAt: Date;
+      }>;
+      total: number;
+    }> {
       const offset = (pagination.page - 1) * pagination.pageSize;
       const [items, totalRows] = await Promise.all([
         db
@@ -169,6 +179,7 @@ export function importsRepository(db: DbInstance) {
             externalRef: schema.queueItems.externalRef,
             source: schema.queueItems.source,
             payload: schema.queueItems.payload,
+            createdAt: schema.queueItems.createdAt,
           })
           .from(schema.queueItems)
           .where(and(eq(schema.queueItems.batchId, batchId), sql`${schema.queueItems.productId} IS NULL`))
@@ -187,20 +198,7 @@ export function importsRepository(db: DbInstance) {
       externalRef: string,
       payload: Record<string, unknown>
     ): Promise<Array<{ productId: string; productName: string; score: number }>> {
-      const displayName =
-        (payload.nome as string | undefined) ?? (payload.name as string | undefined) ?? externalRef;
-      const result = await db.execute(sql`
-        SELECT id, name, similarity(name, ${displayName}) AS score
-        FROM products
-        WHERE is_active = true AND similarity(name, ${displayName}) > 0.2
-        ORDER BY score DESC
-        LIMIT 3
-      `);
-      return result.rows.map((row) => ({
-        productId: (row as Record<string, unknown>).id as string,
-        productName: (row as Record<string, unknown>).name as string,
-        score: Number((row as Record<string, unknown>).score),
-      }));
+      return findSuggestionsForItem(db, externalRef, payload);
     },
   };
 }

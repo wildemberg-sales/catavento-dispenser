@@ -1,0 +1,2 @@
+DROP INDEX "queue_items_dequeue_idx";--> statement-breakpoint
+CREATE INDEX "queue_items_dequeue_idx" ON "queue_items" USING btree ("status",("product_id" IS NULL),"priority" DESC NULLS LAST,"sequence");

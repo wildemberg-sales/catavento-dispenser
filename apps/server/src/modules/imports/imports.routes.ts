@@ -6,11 +6,15 @@ import { NoFileUploadedError } from "../../lib/errors.js";
 import { importsRepository } from "./imports.repository.js";
 import { importsService } from "./imports.service.js";
 import { priorityRulesRepository } from "../queue/priority-rules.repository.js";
+import { queueRepository } from "../queue/queue.repository.js";
+import { monitorBus } from "../../lib/monitor-bus.js";
 
 export default async function importsRoutes(app: FastifyInstance) {
   const service = importsService({
     repo: importsRepository(app.db),
     priorityRulesRepo: priorityRulesRepository(app.db),
+    queueRepo: queueRepository(app.db),
+    bus: monitorBus,
   });
 
   app.post(

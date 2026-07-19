@@ -113,6 +113,43 @@ describe("POST /queue/next", () => {
     await app.close();
   });
 
+  it("retorna um item vinculado a um produto antes de um item sem vínculo, mesmo com prioridade menor", async () => {
+    await createUser(ctx.db, { username: "op-deprioriza", role: "operator" });
+    const product = await createProduct(ctx.db, { name: "Produto Vinculado Baixa Prioridade" });
+    const batch = await createImportBatch(ctx.db);
+    await createQueueItem(ctx.db, { batchId: batch.id, priority: 10, productId: null });
+    const linkedLowPriority = await createQueueItem(ctx.db, { batchId: batch.id, priority: 0, productId: product.id });
+    const app = await buildTestApp(ctx.db);
+    const token = await loginAs(app, "op-deprioriza");
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/queue/next",
+      headers: { authorization: `Bearer ${token}` },
+    });
+
+    expect(response.json().item.id).toBe(linkedLowPriority.id);
+    await app.close();
+  });
+
+  it("entre itens sem vínculo, prioridade por loja e FIFO continuam valendo", async () => {
+    await createUser(ctx.db, { username: "op-sem-vinculo-ordem", role: "operator" });
+    const batch = await createImportBatch(ctx.db);
+    await createQueueItem(ctx.db, { batchId: batch.id, priority: 0, productId: null });
+    const highPriorityUnlinked = await createQueueItem(ctx.db, { batchId: batch.id, priority: 10, productId: null });
+    const app = await buildTestApp(ctx.db);
+    const token = await loginAs(app, "op-sem-vinculo-ordem");
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/queue/next",
+      headers: { authorization: `Bearer ${token}` },
+    });
+
+    expect(response.json().item.id).toBe(highPriorityUnlinked.id);
+    await app.close();
+  });
+
   it("nunca retorna itens que não estão pending (completed, cancelled, problem)", async () => {
     await createUser(ctx.db, { username: "op5", role: "operator" });
     const batch = await createImportBatch(ctx.db);

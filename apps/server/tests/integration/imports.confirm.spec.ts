@@ -1,13 +1,14 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { eq } from "drizzle-orm";
 import { schema } from "@catavento/db";
 import { startTestDb, stopTestDb, truncateAll, type TestDbContext } from "../setup/testcontainer.js";
 import { createUser, DEFAULT_PRIORITY_RULES, setPriorityRules } from "../setup/factories.js";
 import { buildTestApp } from "../setup/build-test-app.js";
 import { buildMultipartBody } from "../setup/multipart.js";
+import { monitorBus } from "../../src/lib/monitor-bus.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const FIXTURES_DIR = path.resolve(__dirname, "../fixtures/imports");
@@ -207,6 +208,44 @@ describe("POST /imports/:id/confirm", () => {
       payload: { columnMapping: preview.suggestedMapping },
     });
     expect(secondResponse.statusCode).toBe(409);
+    await app.close();
+  });
+
+  it("publica queue_size_changed quando linhas válidas são enfileiradas", async () => {
+    await createUser(ctx.db, { username: "admin-confirma-evento", role: "admin" });
+    const app = await buildTestApp(ctx.db);
+    const token = await loginAs(app, "admin-confirma-evento");
+    const preview = await upload(app, token, "valid-simple.csv");
+    const publishSpy = vi.spyOn(monitorBus, "publish");
+
+    await app.inject({
+      method: "POST",
+      url: `/admin/imports/${preview.batchId}/confirm`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: { columnMapping: preview.suggestedMapping },
+    });
+
+    expect(publishSpy).toHaveBeenCalledWith({ type: "queue_size_changed", payload: { queueSize: 5 } });
+    publishSpy.mockRestore();
+    await app.close();
+  });
+
+  it("NÃO publica queue_size_changed quando nenhuma linha válida é enfileirada", async () => {
+    await createUser(ctx.db, { username: "admin-confirma-vazio", role: "admin" });
+    const app = await buildTestApp(ctx.db);
+    const token = await loginAs(app, "admin-confirma-vazio");
+    const preview = await upload(app, token, "header-only.csv");
+    const publishSpy = vi.spyOn(monitorBus, "publish");
+
+    await app.inject({
+      method: "POST",
+      url: `/admin/imports/${preview.batchId}/confirm`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: { columnMapping: preview.suggestedMapping },
+    });
+
+    expect(publishSpy).not.toHaveBeenCalledWith(expect.objectContaining({ type: "queue_size_changed" }));
+    publishSpy.mockRestore();
     await app.close();
   });
 });

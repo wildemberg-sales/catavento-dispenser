@@ -1,9 +1,10 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { eq } from "drizzle-orm";
 import { schema } from "@catavento/db";
 import { startTestDb, stopTestDb, truncateAll, type TestDbContext } from "../setup/testcontainer.js";
 import { createImportBatch, createQueueItem, createUser } from "../setup/factories.js";
 import { buildTestApp } from "../setup/build-test-app.js";
+import { monitorBus } from "../../src/lib/monitor-bus.js";
 
 describe("GET /admin/queue e ações administrativas", () => {
   let ctx: TestDbContext;
@@ -83,6 +84,44 @@ describe("GET /admin/queue e ações administrativas", () => {
 
     const [updated] = await ctx.db.select().from(schema.queueItems).where(eq(schema.queueItems.id, item.id));
     expect(updated?.status).toBe("pending");
+    await app.close();
+  });
+
+  it("requeue publica queue_size_changed com o tamanho atual da fila", async () => {
+    await createUser(ctx.db, { username: "admin-requeue-evento", role: "admin" });
+    const batch = await createImportBatch(ctx.db);
+    const item = await createQueueItem(ctx.db, { batchId: batch.id, status: "problem" });
+    const app = await buildTestApp(ctx.db);
+    const token = await loginAs(app, "admin-requeue-evento");
+    const publishSpy = vi.spyOn(monitorBus, "publish");
+
+    await app.inject({
+      method: "POST",
+      url: `/admin/queue/items/${item.id}/requeue`,
+      headers: { authorization: `Bearer ${token}` },
+    });
+
+    expect(publishSpy).toHaveBeenCalledWith({ type: "queue_size_changed", payload: { queueSize: 1 } });
+    publishSpy.mockRestore();
+    await app.close();
+  });
+
+  it("cancel publica queue_size_changed com o tamanho atual da fila", async () => {
+    await createUser(ctx.db, { username: "admin-cancel-evento", role: "admin" });
+    const batch = await createImportBatch(ctx.db);
+    const item = await createQueueItem(ctx.db, { batchId: batch.id, status: "pending" });
+    const app = await buildTestApp(ctx.db);
+    const token = await loginAs(app, "admin-cancel-evento");
+    const publishSpy = vi.spyOn(monitorBus, "publish");
+
+    await app.inject({
+      method: "POST",
+      url: `/admin/queue/items/${item.id}/cancel`,
+      headers: { authorization: `Bearer ${token}` },
+    });
+
+    expect(publishSpy).toHaveBeenCalledWith({ type: "queue_size_changed", payload: { queueSize: 0 } });
+    publishSpy.mockRestore();
     await app.close();
   });
 

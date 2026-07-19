@@ -94,6 +94,8 @@ export const unlinkedItemSchema = z.object({
   externalRef: z.string(),
   source: sourceTypeSchema,
   payload: z.record(z.string(), z.unknown()),
+  batchId: z.string().uuid(),
+  createdAt: z.string().datetime(),
   suggestions: z.array(unlinkedItemSuggestionSchema),
 });
 export type UnlinkedItem = z.infer<typeof unlinkedItemSchema>;

@@ -1,4 +1,4 @@
-import { and, count, eq } from "drizzle-orm";
+import { and, count, desc, eq } from "drizzle-orm";
 import { schema, type DbInstance } from "@catavento/db";
 import type { Role } from "@catavento/contracts/users";
 
@@ -29,7 +29,13 @@ export function usersRepository(db: DbInstance) {
 
       const offset = (pagination.page - 1) * pagination.pageSize;
       const [items, totalRows] = await Promise.all([
-        db.select().from(schema.users).where(where).limit(pagination.pageSize).offset(offset),
+        db
+          .select()
+          .from(schema.users)
+          .where(where)
+          .orderBy(desc(schema.users.createdAt))
+          .limit(pagination.pageSize)
+          .offset(offset),
         db.select({ total: count() }).from(schema.users).where(where),
       ]);
       return { items, total: Number(totalRows[0]!.total) };

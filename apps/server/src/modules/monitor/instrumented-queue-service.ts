@@ -36,5 +36,17 @@ export function withMonitorEvents(service: QueueService, bus: MonitorBus, repo: 
         payload: { queueItemId, operatorId, outcome: "problem" },
       });
     },
+
+    async requeueItem(queueItemId) {
+      await service.requeueItem(queueItemId);
+      const queueSize = await repo.countPending();
+      bus.publish({ type: "queue_size_changed", payload: { queueSize } });
+    },
+
+    async cancelItem(queueItemId) {
+      await service.cancelItem(queueItemId);
+      const queueSize = await repo.countPending();
+      bus.publish({ type: "queue_size_changed", payload: { queueSize } });
+    },
   };
 }

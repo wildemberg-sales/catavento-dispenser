@@ -4,10 +4,12 @@ import type { Config } from "./config/env.js";
 import type { StoragePort } from "./lib/storage/storage.port.js";
 import { buildLoggerOptions } from "./lib/logger.js";
 import sensiblePlugin from "./plugins/sensible.js";
+import corsPlugin from "./plugins/cors.js";
 import jwtPlugin from "./plugins/jwt.js";
 import dbPlugin from "./plugins/db.js";
 import configPlugin from "./plugins/config.js";
 import storagePlugin from "./plugins/storage.js";
+import staticPlugin from "./plugins/static.js";
 import errorHandlerPlugin from "./plugins/error-handler.js";
 import multipartPlugin from "./plugins/multipart.js";
 import authRoutes from "./modules/auth/auth.routes.js";
@@ -27,10 +29,12 @@ export async function buildApp(opts: {
   const app = fastify({ logger: buildLoggerOptions(opts.config) });
 
   await app.register(sensiblePlugin);
+  await app.register(corsPlugin);
   await app.register(jwtPlugin, { config: opts.config });
   await app.register(dbPlugin, { db: opts.db });
   await app.register(configPlugin, { config: opts.config });
   await app.register(storagePlugin, { storage: opts.storage });
+  await app.register(staticPlugin);
   await app.register(multipartPlugin);
   await app.register(errorHandlerPlugin);
   await app.register(authRoutes, { prefix: "/auth" });

@@ -2,6 +2,8 @@ import type { ColumnMapping, ImportPreviewResponse } from "@catavento/contracts/
 import { AlreadyConfirmedError, ImportBatchNotFoundError } from "../../lib/errors.js";
 import type { ImportsRepository } from "./imports.repository.js";
 import type { PriorityRulesRepository } from "../queue/priority-rules.repository.js";
+import type { QueueRepository } from "../queue/queue.repository.js";
+import type { MonitorBus } from "../../lib/monitor-bus.js";
 import { parseFile } from "./file-parser.js";
 import { suggestColumnMapping } from "./column-mapper.js";
 import { validateRow } from "./row-validator.js";
@@ -10,8 +12,13 @@ import { toImportBatchDto, toImportBatchRowDto } from "./imports.mapper.js";
 
 const PREVIEW_SAMPLE_SIZE = 20;
 
-export function importsService(deps: { repo: ImportsRepository; priorityRulesRepo: PriorityRulesRepository }) {
-  const { repo, priorityRulesRepo } = deps;
+export function importsService(deps: {
+  repo: ImportsRepository;
+  priorityRulesRepo: PriorityRulesRepository;
+  queueRepo: QueueRepository;
+  bus: MonitorBus;
+}) {
+  const { repo, priorityRulesRepo, queueRepo, bus } = deps;
 
   return {
     async createPreview(buffer: Buffer, filename: string, importedBy: string): Promise<ImportPreviewResponse> {
@@ -86,6 +93,11 @@ export function importsService(deps: { repo: ImportsRepository; priorityRulesRep
 
       await repo.insertQueueItemsForValidRows(batchId, toInsert);
 
+      if (toInsert.length > 0) {
+        const queueSize = await queueRepo.countPending();
+        bus.publish({ type: "queue_size_changed", payload: { queueSize } });
+      }
+
       const rejectedCount = rawRows.length - validCount;
       const status = validCount > 0 ? "ready" : "failed";
 
@@ -154,6 +166,8 @@ export function importsService(deps: { repo: ImportsRepository; priorityRulesRep
           externalRef: item.externalRef,
           source: item.source,
           payload: item.payload,
+          batchId,
+          createdAt: item.createdAt.toISOString(),
           suggestions: await repo.findSuggestionsForItem(item.externalRef, item.payload),
         }))
       );
