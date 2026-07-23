@@ -83,4 +83,18 @@ describe("createSecureStoreHandlers", () => {
 
     expect(fs.writeFileSync).not.toHaveBeenCalled();
   });
+
+  it("get retorna null e limpa a chave quando decryptString falha (ciphertext de uma chave de OS diferente/antiga)", () => {
+    const fs = createFakeFs();
+    const safeStorage = createFakeSafeStorage();
+    const handlers = createSecureStoreHandlers({ safeStorage, storePath, fs });
+    handlers.set("refreshToken", "token-secreto");
+    safeStorage.decryptString.mockImplementation(() => {
+      throw new Error("Error while decrypting the ciphertext provided to safeStorage.decryptString.");
+    });
+
+    expect(handlers.get("refreshToken")).toBeNull();
+    expect(handlers.get("refreshToken")).toBeNull();
+    expect(fs.writeFileSync).toHaveBeenLastCalledWith(storePath, JSON.stringify({}));
+  });
 });

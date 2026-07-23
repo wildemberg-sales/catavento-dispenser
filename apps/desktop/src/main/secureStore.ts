@@ -32,7 +32,16 @@ export function createSecureStoreHandlers(deps: { safeStorage: SafeStorageLike; 
       const blob = readBlob();
       const encrypted = blob[key];
       if (!encrypted) return null;
-      return storage.decryptString(Buffer.from(encrypted, "base64"));
+      try {
+        return storage.decryptString(Buffer.from(encrypted, "base64"));
+      } catch {
+        // Ciphertext de uma chave de OS diferente (ex.: keychain resetado,
+        // ou app reinstalado com nova assinatura ad-hoc) nunca mais descriptografa
+        // — autolimpa em vez de propagar o erro pro IPC caller.
+        delete blob[key];
+        writeBlob(blob);
+        return null;
+      }
     },
 
     set(key: string, value: string): void {
