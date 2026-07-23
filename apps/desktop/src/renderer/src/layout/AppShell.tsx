@@ -153,8 +153,13 @@ const styles: Record<string, React.CSSProperties> = {
     minWidth: 0,
     overflow: "auto",
   },
+  // margin: "0 auto" — sem isso o maxWidth só limita a largura, mas o bloco
+  // fica grudado na borda esquerda em telas largas (todo o espaço sobra do
+  // lado direito) em vez de ficar centralizado dentro da área de conteúdo.
   contentInner: {
+    width: "100%",
     maxWidth: 1120,
+    margin: "0 auto",
     display: "flex",
     flexDirection: "column",
     gap: 20,
