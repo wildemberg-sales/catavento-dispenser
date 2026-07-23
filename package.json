@@ -16,8 +16,10 @@
     "db:generate": "pnpm --filter @catavento/db db:generate",
     "db:migrate": "pnpm --filter @catavento/db db:migrate",
     "db:seed": "pnpm --filter @catavento/db db:seed",
-    "compose:up": "docker compose up -d postgres",
-    "compose:down": "docker compose down"
+    "compose:up": "docker compose up -d",
+    "compose:down": "docker compose down",
+    "compose:prod:up": "docker compose -f docker-compose.prod.yml --env-file .env.production up -d --build",
+    "compose:prod:down": "docker compose -f docker-compose.prod.yml down"
   },
   "devDependencies": {
     "turbo": "^2.5.0",

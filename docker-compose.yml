@@ -16,5 +16,28 @@ services:
       timeout: 3s
       retries: 5
 
+  server:
+    build:
+      context: .
+      dockerfile: apps/server/Dockerfile
+      target: dev
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgres://catavento:catavento@postgres:5432/catavento_dev
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./apps/server/src:/app/apps/server/src
+      - ./packages/db/src:/app/packages/db/src
+      - ./packages/db/migrations:/app/packages/db/migrations
+      - ./packages/contracts/src:/app/packages/contracts/src
+      - catavento_uploads_dev:/app/apps/server/.data/uploads
+
 volumes:
   catavento_pg_data:
+  catavento_uploads_dev:
