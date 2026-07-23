@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { View, Text, StyleSheet } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useAuth } from "../auth/AuthContext";
@@ -8,8 +9,10 @@ import { createPendingActionsQueue } from "../offline/pendingActionsQueue";
 import { usePendingActionsSync } from "../offline/usePendingActionsSync";
 import { createPendingActionSender } from "../offline/sendPendingAction";
 import { PrimaryButton } from "../components/PrimaryButton";
+import { Card } from "../components/Card";
 import { colors } from "../theme/colors";
 import { typography } from "../theme/typography";
+import { MAX_CONTENT_WIDTH } from "../theme/layout";
 import type { RootStackParamList } from "../navigation/types";
 
 export function MainScreen({ navigation }: NativeStackScreenProps<RootStackParamList, "Main">) {
@@ -51,44 +54,87 @@ export function MainScreen({ navigation }: NativeStackScreenProps<RootStackParam
 
   if (checkingCurrent) {
     return (
-      <View style={styles.container}>
-        <Text style={styles.message}>Carregando...</Text>
-      </View>
+      <SafeAreaView style={styles.safeArea} edges={["top", "bottom"]}>
+        <View style={styles.container}>
+          <Text style={styles.message}>Carregando...</Text>
+        </View>
+      </SafeAreaView>
     );
   }
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Catavento</Text>
-      {emptyQueue ? <Text style={styles.message}>Sem trabalho disponível no momento.</Text> : null}
-      <PrimaryButton
-        testID="main-next-button"
-        title="Pegar próximo item"
-        onPress={handleNext}
-        disabled={fetchingNext}
-      />
-      <PrimaryButton testID="main-logout-button" title="Sair" variant="secondary" onPress={logout} />
-    </View>
+    <SafeAreaView style={styles.safeArea} edges={["top", "bottom"]}>
+      <View style={styles.container}>
+        <Card style={styles.card}>
+          <View style={styles.badge}>
+            <Text style={styles.badgeIcon}>🧁</Text>
+          </View>
+          <Text style={styles.title}>Catavento</Text>
+          {emptyQueue ? <Text style={styles.message}>Sem trabalho disponível no momento.</Text> : null}
+          <PrimaryButton
+            testID="main-next-button"
+            title="Pegar próximo item"
+            onPress={handleNext}
+            disabled={fetchingNext}
+            style={styles.fullWidthButton}
+          />
+          <PrimaryButton
+            testID="main-logout-button"
+            title="Sair"
+            variant="secondary"
+            onPress={logout}
+            style={styles.fullWidthButton}
+          />
+        </Card>
+      </View>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  safeArea: {
     flex: 1,
     backgroundColor: colors.background,
+  },
+  container: {
+    flex: 1,
     justifyContent: "center",
     padding: 32,
-    gap: 16,
+  },
+  // Mesmo raciocínio do LoginScreen — trava a largura numa coluna central
+  // em telas grandes (tablet) em vez de esticar os botões de ponta a ponta.
+  card: {
+    width: "100%",
+    maxWidth: MAX_CONTENT_WIDTH,
+    alignSelf: "center",
+    alignItems: "center",
+    padding: 32,
+    gap: 14,
+  },
+  badge: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: colors.secondarySoft,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 4,
+  },
+  badgeIcon: {
+    fontSize: 36,
   },
   title: {
     ...typography.title,
     color: colors.secondary,
     textAlign: "center",
-    marginBottom: 16,
+    marginBottom: 4,
   },
   message: {
     ...typography.body,
-    color: colors.text,
+    color: colors.textMuted,
     textAlign: "center",
+  },
+  fullWidthButton: {
+    width: "100%",
   },
 });

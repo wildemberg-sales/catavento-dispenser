@@ -1,19 +1,32 @@
 import React, { useState } from "react";
-import { ScrollView, View, StyleSheet, Dimensions, type NativeSyntheticEvent, type NativeScrollEvent } from "react-native";
+import {
+  ScrollView,
+  View,
+  StyleSheet,
+  useWindowDimensions,
+  type NativeSyntheticEvent,
+  type NativeScrollEvent,
+} from "react-native";
 import { Image } from "expo-image";
 import { colors } from "../theme/colors";
 
-const CONTENT_WIDTH = Dimensions.get("window").width - 48;
-
 export function ProductImageCarousel({ images }: { images: { url: string; position: number }[] }) {
   const [activeIndex, setActiveIndex] = useState(0);
+  // useWindowDimensions (não Dimensions.get, que só lê uma vez) — reage a
+  // mudanças reais de tamanho (rotação, split-screen no Android). O carrossel
+  // é full-bleed de propósito (ocupa a largura inteira da tela, sem o cap de
+  // MAX_CONTENT_WIDTH usado no resto do conteúdo) — é a foto do produto, faz
+  // sentido aproveitar o máximo de espaço disponível tanto no celular quanto
+  // no tablet, diferente de texto/botões que ficam melhores numa coluna mais estreita.
+  const windowWidth = useWindowDimensions().width;
+  const contentWidth = windowWidth;
 
   if (images.length === 0) return null;
 
   const sorted = [...images].sort((a, b) => a.position - b.position);
 
   function handleScrollEnd(event: NativeSyntheticEvent<NativeScrollEvent>) {
-    const index = Math.round(event.nativeEvent.contentOffset.x / CONTENT_WIDTH);
+    const index = Math.round(event.nativeEvent.contentOffset.x / contentWidth);
     setActiveIndex(index);
   }
 
@@ -25,10 +38,16 @@ export function ProductImageCarousel({ images }: { images: { url: string; positi
         pagingEnabled
         showsHorizontalScrollIndicator={false}
         onMomentumScrollEnd={handleScrollEnd}
-        style={styles.container}
+        style={[styles.container, { width: contentWidth }]}
       >
         {sorted.map((image) => (
-          <Image key={image.url} source={{ uri: image.url }} style={styles.image} contentFit="cover" cachePolicy="disk" />
+          <Image
+            key={image.url}
+            source={{ uri: image.url }}
+            style={[styles.image, { width: contentWidth }]}
+            contentFit="cover"
+            cachePolicy="disk"
+          />
         ))}
       </ScrollView>
       {sorted.length > 1 ? (
@@ -48,13 +67,12 @@ export function ProductImageCarousel({ images }: { images: { url: string; positi
 
 const styles = StyleSheet.create({
   container: {
-    width: CONTENT_WIDTH,
     height: 340,
   },
+  // Sem borderRadius de propósito — a imagem é full-bleed (encosta nas duas
+  // bordas da tela), então cantos arredondados cortariam estranho.
   image: {
-    width: CONTENT_WIDTH,
     height: 340,
-    borderRadius: 16,
     backgroundColor: colors.surfaceAlt,
   },
   dots: {

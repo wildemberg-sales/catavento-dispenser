@@ -40,6 +40,7 @@ const linkedItem = {
       { url: "https://example.com/a.jpg", position: 0 },
       { url: "https://example.com/b.jpg", position: 1 },
     ],
+    createdAt: new Date().toISOString(),
   },
 };
 

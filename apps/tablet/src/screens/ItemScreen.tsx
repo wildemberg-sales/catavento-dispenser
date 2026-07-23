@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from "react";
 import { View, Text, TextInput, ScrollView, StyleSheet } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useAuth } from "../auth/AuthContext";
@@ -7,8 +8,10 @@ import { createQueueApi } from "../api/queue.api";
 import { createPendingActionsQueue } from "../offline/pendingActionsQueue";
 import { PrimaryButton } from "../components/PrimaryButton";
 import { ProductImageCarousel } from "../components/ProductImageCarousel";
+import { Card } from "../components/Card";
 import { colors } from "../theme/colors";
 import { typography } from "../theme/typography";
+import { MAX_CONTENT_WIDTH } from "../theme/layout";
 import type { RootStackParamList } from "../navigation/types";
 
 export function ItemScreen({ navigation, route }: NativeStackScreenProps<RootStackParamList, "Item">) {
@@ -51,83 +54,117 @@ export function ItemScreen({ navigation, route }: NativeStackScreenProps<RootSta
   }
 
   return (
-    <View style={styles.container}>
-      <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
-        {item.product ? (
-          <>
-            <ProductImageCarousel images={item.product.images} />
-            <Text style={styles.title}>{item.product.name}</Text>
-            {item.product.description ? <Text style={styles.body}>{item.product.description}</Text> : null}
-            {item.product.assemblyItems.length > 0 ? (
-              <View style={styles.assemblyBox}>
-                <Text style={styles.sectionTitle}>Itens para montagem</Text>
-                {item.product.assemblyItems.map((assemblyItem, index) => (
-                  <Text key={`${assemblyItem}-${index}`} style={styles.assemblyItem}>{`• ${assemblyItem}`}</Text>
-                ))}
+    <SafeAreaView style={styles.safeArea} edges={["top", "bottom"]}>
+      <View style={styles.container}>
+        <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
+          {item.product ? (
+            <>
+              {/* Full-bleed — a foto do produto ocupa a largura inteira da tela
+                  (fora da coluna central), diferente do texto/botões abaixo. */}
+              <ProductImageCarousel images={item.product.images} />
+              <View style={styles.bodyColumn}>
+                <Text style={styles.title}>{item.product.name}</Text>
+                {item.product.description ? <Text style={styles.body}>{item.product.description}</Text> : null}
+                {item.product.assemblyItems.length > 0 ? (
+                  <Card style={styles.assemblyCard}>
+                    <Text style={styles.sectionTitle}>
+                      <Text aria-hidden>🧁 </Text>
+                      <Text>Itens para montagem</Text>
+                    </Text>
+                    {item.product.assemblyItems.map((assemblyItem, index) => (
+                      <Text key={`${assemblyItem}-${index}`} style={styles.assemblyItem}>{`• ${assemblyItem}`}</Text>
+                    ))}
+                  </Card>
+                ) : null}
               </View>
-            ) : null}
-          </>
-        ) : (
-          <>
-            <Text style={styles.badge}>Produto sem cadastro</Text>
-            <Text style={styles.body}>{JSON.stringify(item.payload)}</Text>
-          </>
-        )}
-      </ScrollView>
+            </>
+          ) : (
+            <View style={styles.bodyColumn}>
+              <Text style={styles.badge}>Produto sem cadastro</Text>
+              <Card style={styles.rawPayloadCard}>
+                <Text style={styles.body}>{JSON.stringify(item.payload)}</Text>
+              </Card>
+            </View>
+          )}
+        </ScrollView>
 
-      {reporting ? (
-        <View style={styles.reportBox}>
-          <TextInput
-            testID="item-problem-note"
-            style={styles.input}
-            placeholder="Descreva o problema"
-            value={note}
-            onChangeText={setNote}
-            multiline
-          />
-          {noteError ? <Text style={styles.error}>{noteError}</Text> : null}
-          <PrimaryButton
-            testID="item-problem-submit"
-            title="Enviar"
-            variant="secondary"
-            onPress={handleReportSubmit}
-            disabled={submitting}
-          />
+        <View style={styles.bottomBar}>
+          {reporting ? (
+            <Card style={styles.reportBox}>
+              <TextInput
+                testID="item-problem-note"
+                style={styles.input}
+                placeholder="Descreva o problema"
+                placeholderTextColor={colors.textMuted}
+                value={note}
+                onChangeText={setNote}
+                multiline
+              />
+              {noteError ? <Text style={styles.error}>{noteError}</Text> : null}
+              <PrimaryButton
+                testID="item-problem-submit"
+                title="Enviar"
+                variant="secondary"
+                onPress={handleReportSubmit}
+                disabled={submitting}
+                style={styles.fullWidthButton}
+              />
+            </Card>
+          ) : (
+            <View style={styles.actions}>
+              <PrimaryButton
+                testID="item-complete-button"
+                title="Concluir"
+                onPress={handleComplete}
+                disabled={submitting}
+              />
+              <PrimaryButton
+                testID="item-report-button"
+                title="Reportar problema"
+                variant="secondary"
+                onPress={() => setReporting(true)}
+                disabled={submitting}
+              />
+            </View>
+          )}
         </View>
-      ) : (
-        <View style={styles.actions}>
-          <PrimaryButton
-            testID="item-complete-button"
-            title="Concluir"
-            onPress={handleComplete}
-            disabled={submitting}
-          />
-          <PrimaryButton
-            testID="item-report-button"
-            title="Reportar problema"
-            variant="secondary"
-            onPress={() => setReporting(true)}
-            disabled={submitting}
-          />
-        </View>
-      )}
-    </View>
+      </View>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  safeArea: {
     flex: 1,
     backgroundColor: colors.background,
-    padding: 24,
-    gap: 16,
+  },
+  container: {
+    flex: 1,
   },
   scroll: {
     flex: 1,
   },
   scrollContent: {
+    paddingBottom: 24,
+  },
+  // Coluna central de leitura confortável — usada pro texto/cards, mas NÃO
+  // pelo carrossel (esse fica full-bleed, fora dela, ver ProductImageCarousel).
+  bodyColumn: {
+    width: "100%",
+    maxWidth: MAX_CONTENT_WIDTH,
+    alignSelf: "center",
+    paddingHorizontal: 24,
+    paddingTop: 20,
     gap: 16,
-    paddingBottom: 16,
+  },
+  // Mesma coluna central, mas pros botões de ação no rodapé (fora do ScrollView).
+  bottomBar: {
+    width: "100%",
+    maxWidth: MAX_CONTENT_WIDTH,
+    alignSelf: "center",
+    paddingHorizontal: 24,
+    paddingTop: 12,
+    paddingBottom: 4,
   },
   title: {
     ...typography.title,
@@ -138,11 +175,13 @@ const styles = StyleSheet.create({
     color: colors.text,
   },
   sectionTitle: {
-    ...typography.label,
+    ...typography.sectionTitle,
     color: colors.secondary,
+    marginBottom: 4,
   },
-  assemblyBox: {
-    gap: 4,
+  assemblyCard: {
+    padding: 18,
+    gap: 6,
   },
   assemblyItem: {
     ...typography.body,
@@ -151,27 +190,29 @@ const styles = StyleSheet.create({
   badge: {
     ...typography.label,
     color: colors.secondary,
-    backgroundColor: colors.surfaceAlt,
+    backgroundColor: colors.secondarySoft,
     alignSelf: "flex-start",
-    paddingHorizontal: 12,
-    paddingVertical: 4,
-    borderRadius: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 999,
+  },
+  rawPayloadCard: {
+    padding: 18,
   },
   actions: {
-    marginTop: "auto",
     gap: 12,
   },
   reportBox: {
-    marginTop: "auto",
+    padding: 18,
     gap: 12,
   },
   input: {
     minHeight: 80,
-    borderWidth: 1,
+    borderWidth: 1.5,
     borderColor: colors.border,
     borderRadius: 12,
     padding: 16,
-    backgroundColor: colors.surface,
+    backgroundColor: colors.background,
     color: colors.text,
     textAlignVertical: "top",
     ...typography.body,
@@ -179,5 +220,8 @@ const styles = StyleSheet.create({
   error: {
     ...typography.label,
     color: colors.danger,
+  },
+  fullWidthButton: {
+    width: "100%",
   },
 });
