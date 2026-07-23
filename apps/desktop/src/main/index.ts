@@ -13,6 +13,12 @@ function createWindow(): void {
   const window = new BrowserWindow({
     width: 1280,
     height: 800,
+    // Abaixo disso a UI não tem como reorganizar o conteúdo de forma legível
+    // mesmo com o layout responsivo (sidebar colapsada, tabelas com scroll
+    // próprio, gráficos fluidos) — evita que o usuário arraste pra um estado
+    // inutilizável.
+    minWidth: 480,
+    minHeight: 560,
     show: false,
     webPreferences: {
       preload: join(__dirname, "../preload/index.mjs"),

@@ -213,3 +213,54 @@ table.data-table tbody tr:last-child td {
     transform: translateY(0);
   }
 }
+
+/* App shell layout — sidebar collapses to icon-only below 860px so the
+   content area keeps enough room for forms/tables/charts to reflow instead
+   of forcing a horizontal scroll on the whole page. Width/padding live here
+   (not as inline styles) so the media queries below can override them. */
+.app-sidebar {
+  width: 232px;
+  min-width: 232px;
+  padding: 20px;
+  transition:
+    width 0.15s ease,
+    padding 0.15s ease;
+}
+.app-content {
+  padding: 32px;
+  transition: padding 0.15s ease;
+}
+
+@media (max-width: 860px) {
+  .app-sidebar {
+    width: 76px;
+    min-width: 76px;
+    padding: 16px 10px;
+  }
+  .app-sidebar .nav-link {
+    justify-content: center;
+    padding: 11px 6px;
+  }
+  /* !important: o userMeta (nome+papel do usuário) tem display:flex inline,
+     que venceria uma regra de stylesheet comum — !important é a única forma
+     de escondê-lo daqui sem remover o display inline usado no modo expandido. */
+  .app-shell-label {
+    display: none !important;
+  }
+  .app-brand {
+    justify-content: center;
+    padding-left: 0;
+  }
+  .app-user-card {
+    justify-content: center;
+  }
+  .app-content {
+    padding: 16px;
+  }
+}
+
+@media (max-width: 560px) {
+  .app-content {
+    padding: 10px;
+  }
+}

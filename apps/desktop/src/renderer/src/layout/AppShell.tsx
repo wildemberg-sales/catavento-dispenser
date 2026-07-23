@@ -21,10 +21,10 @@ export function AppShell() {
 
   return (
     <div style={styles.container}>
-      <nav style={styles.sidebar}>
-        <div style={styles.brand}>
+      <nav className="app-sidebar" style={styles.sidebar}>
+        <div className="app-brand" style={styles.brand}>
           <span style={styles.brandBadge}>🌀</span>
-          <span>Catavento</span>
+          <span className="app-shell-label">Catavento</span>
         </div>
 
         <div style={styles.navGroup}>
@@ -32,10 +32,11 @@ export function AppShell() {
             <NavLink
               key={item.to}
               to={item.to}
+              title={item.label}
               className={({ isActive }) => `nav-link${isActive ? " nav-link-active" : ""}`}
             >
               <span aria-hidden="true">{item.icon}</span>
-              <span>{item.label}</span>
+              <span className="app-shell-label">{item.label}</span>
             </NavLink>
           ))}
         </div>
@@ -43,9 +44,9 @@ export function AppShell() {
         <div style={styles.spacer} />
 
         {user ? (
-          <div style={styles.userCard}>
+          <div className="app-user-card" style={styles.userCard} title={user.displayName}>
             <span style={styles.userAvatar}>{initial}</span>
-            <div style={styles.userMeta}>
+            <div className="app-shell-label" style={styles.userMeta}>
               <span style={styles.userName}>{user.displayName}</span>
               <span style={styles.userRole}>Administrador</span>
             </div>
@@ -55,13 +56,15 @@ export function AppShell() {
           data-testid="logout-btn"
           variant="secondary"
           size="sm"
+          title="Sair"
           style={{ width: "100%" }}
           onClick={() => void logout()}
         >
-          Sair
+          <span aria-hidden="true">🚪</span>
+          <span className="app-shell-label">Sair</span>
         </Button>
       </nav>
-      <main style={styles.content}>
+      <main className="app-content" style={styles.content}>
         <div className="fade-in" style={styles.contentInner}>
           <Outlet />
         </div>
@@ -76,13 +79,13 @@ const styles: Record<string, React.CSSProperties> = {
     height: "100vh",
     backgroundColor: colors.background,
   },
+  // width/minWidth/padding vêm da classe .app-sidebar (theme/global.css) —
+  // não aqui, pra que o media query de sidebar colapsada consiga sobrescrever
+  // (um estilo inline sempre vence uma regra de CSS não-!important).
   sidebar: {
     display: "flex",
     flexDirection: "column",
-    width: 232,
-    minWidth: 232,
     flexShrink: 0,
-    padding: 20,
     gap: 6,
     background: `linear-gradient(180deg, ${colors.secondary} 0%, #0f2338 100%)`,
     position: "sticky",
@@ -144,11 +147,11 @@ const styles: Record<string, React.CSSProperties> = {
     whiteSpace: "nowrap",
   },
   userRole: { ...typography.small, color: "rgba(251, 239, 228, 0.6)" },
+  // padding vem da classe .app-content (mesmo motivo do sidebar acima).
   content: {
     flex: 1,
     minWidth: 0,
     overflow: "auto",
-    padding: 32,
   },
   contentInner: {
     maxWidth: 1120,

@@ -10,12 +10,13 @@ const data = [
 ];
 
 describe("TrendChart", () => {
-  it("renderiza um gráfico de barras com o tamanho informado", () => {
-    const { container } = render(<TrendChart data={data} xKey="label" yKey="value" variant="bar" width={400} height={200} />);
+  it("renderiza um gráfico de barras preenchendo a largura do container (responsivo)", () => {
+    const { container } = render(<TrendChart data={data} xKey="label" yKey="value" variant="bar" height={200} />);
 
+    const responsiveContainer = container.querySelector(".recharts-responsive-container");
+    expect(responsiveContainer).toBeTruthy();
     const svg = container.querySelector("svg.recharts-surface");
     expect(svg).toBeTruthy();
-    expect(svg?.getAttribute("width")).toBe("400");
     expect(svg?.getAttribute("height")).toBe("200");
     expect(container.querySelectorAll(".recharts-bar-rectangle")).toHaveLength(3);
   });
@@ -33,7 +34,7 @@ describe("TrendChart", () => {
       { bucket: "2026-03-06T14:00:00.000Z", value: 5 },
     ];
     const { container } = render(
-      <TrendChart data={dateTimeData} xKey="bucket" yKey="value" variant="bar" dateTimeAxis width={400} height={200} />
+      <TrendChart data={dateTimeData} xKey="bucket" yKey="value" variant="bar" dateTimeAxis height={200} />
     );
 
     const svg = container.querySelector("svg.recharts-surface");
