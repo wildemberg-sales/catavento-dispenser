@@ -51,18 +51,150 @@ describe("QueueManagementScreen", () => {
     expect(screen.getByTestId("status-item-1").textContent).toBe("pending");
   });
 
-  it("filtrar por status refaz a busca com o filtro", async () => {
+  it("mostra a data de cadastro do produto vinculado, formatada em duas linhas", async () => {
+    const linkedItem = {
+      ...pendingItem,
+      id: "item-linked",
+      externalRef: "ML-LINKED",
+      productId: "prod-1",
+      product: {
+        id: "prod-1",
+        name: "Bolo Fake Rosa",
+        description: null,
+        attributes: {},
+        assemblyItems: [],
+        images: [],
+        createdAt: new Date(2026, 2, 5, 9, 7, 3).toISOString(),
+      },
+    };
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(jsonResponse(200, { items: [linkedItem], total: 1, page: 1, pageSize: 100 }));
+    renderScreen(fetchMock);
+
+    await screen.findByText("ML-LINKED");
+    const cell = screen.getByTestId("product-created-at-item-linked");
+    expect(cell.textContent).toContain("/2026");
+  });
+
+  it("mostra '-' na data de cadastro quando o item não tem produto vinculado", async () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValue(jsonResponse(200, { items: [pendingItem], total: 1, page: 1, pageSize: 20 }));
     renderScreen(fetchMock);
+
+    await screen.findByText("ML-1");
+    expect(screen.getByTestId("product-created-at-item-1").textContent).toBe("-");
+  });
+
+  it("mudar um filtro não busca imediatamente — espera o debounce", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(jsonResponse(200, { items: [pendingItem], total: 1, page: 1, pageSize: 100 }));
+    renderScreen(fetchMock);
+    await waitFor(() => expect(screen.getByTestId("status-filter")).toBeTruthy());
+    const callsBefore = fetchMock.mock.calls.length;
+
+    fireEvent.change(screen.getByTestId("search-filter"), { target: { value: "bolo" } });
+
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(fetchMock.mock.calls.length).toBe(callsBefore);
+
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining("q=bolo"), expect.anything())
+    );
+  });
+
+  it("aplica status, fonte, data e busca de texto juntos após o debounce", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(jsonResponse(200, { items: [pendingItem], total: 1, page: 1, pageSize: 100 }));
+    renderScreen(fetchMock);
     await waitFor(() => expect(screen.getByTestId("status-filter")).toBeTruthy());
 
     fireEvent.change(screen.getByTestId("status-filter"), { target: { value: "problem" } });
+    fireEvent.change(screen.getByTestId("source-filter"), { target: { value: "shopee" } });
+    fireEvent.change(screen.getByTestId("date-filter"), { target: { value: "2026-01-15" } });
+    fireEvent.change(screen.getByTestId("search-filter"), { target: { value: "bolo" } });
 
-    await waitFor(() =>
-      expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining("status=problem"), expect.anything())
-    );
+    await waitFor(() => {
+      const lastCall = fetchMock.mock.calls.at(-1)?.[0] as string;
+      expect(lastCall).toContain("status=problem");
+      expect(lastCall).toContain("source=shopee");
+      expect(lastCall).toContain("from=2026-01-15");
+      expect(lastCall).toContain("to=2026-01-15");
+      expect(lastCall).toContain("q=bolo");
+    });
+  });
+
+  it("data em branco não envia from/to (todas as datas)", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(jsonResponse(200, { items: [pendingItem], total: 1, page: 1, pageSize: 100 }));
+    renderScreen(fetchMock);
+    await waitFor(() => expect(screen.getByTestId("date-filter")).toBeTruthy());
+
+    fireEvent.change(screen.getByTestId("date-filter"), { target: { value: "2026-01-15" } });
+    await waitFor(() => expect(fetchMock.mock.calls.at(-1)?.[0]).toContain("from=2026-01-15"));
+
+    fireEvent.change(screen.getByTestId("date-filter"), { target: { value: "" } });
+    await waitFor(() => {
+      const lastCall = fetchMock.mock.calls.at(-1)?.[0] as string;
+      expect(lastCall).not.toContain("from=");
+      expect(lastCall).not.toContain("to=");
+    });
+  });
+
+  it("sempre busca com o pageSize máximo permitido (100)", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(jsonResponse(200, { items: [pendingItem], total: 1, page: 1, pageSize: 100 }));
+    renderScreen(fetchMock);
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining("pageSize=100"), expect.anything()));
+  });
+
+  it("mudar um filtro depois de paginar volta pra página 1", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(jsonResponse(200, { items: [pendingItem], total: 250, page: 1, pageSize: 100 }));
+    renderScreen(fetchMock);
+    await waitFor(() => expect(screen.getByTestId("page-next")).toBeTruthy());
+
+    fireEvent.click(screen.getByTestId("page-next"));
+    await waitFor(() => expect(fetchMock.mock.calls.at(-1)?.[0]).toContain("page=2"));
+
+    fireEvent.change(screen.getByTestId("status-filter"), { target: { value: "pending" } });
+    await waitFor(() => {
+      const lastCall = fetchMock.mock.calls.at(-1)?.[0] as string;
+      expect(lastCall).toContain("status=pending");
+      expect(lastCall).toContain("page=1");
+    });
+  });
+
+  it("paginação: 'Próxima' avança de página, 'Anterior' fica desabilitado na primeira página", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(jsonResponse(200, { items: [pendingItem], total: 250, page: 1, pageSize: 100 }));
+    renderScreen(fetchMock);
+    await waitFor(() => expect(screen.getByTestId("page-next")).toBeTruthy());
+
+    expect(screen.getByTestId("page-prev")).toBeDisabled();
+    expect(screen.getByText("Página 1 de 3")).toBeTruthy();
+
+    fireEvent.click(screen.getByTestId("page-next"));
+
+    await waitFor(() => expect(fetchMock.mock.calls.at(-1)?.[0]).toContain("page=2"));
+  });
+
+  it("desabilita 'Próxima' na última página", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(jsonResponse(200, { items: [pendingItem], total: 50, page: 1, pageSize: 100 }));
+    renderScreen(fetchMock);
+
+    await waitFor(() => expect(screen.getByTestId("page-next")).toBeDisabled());
+    expect(screen.getByText("Página 1 de 1")).toBeTruthy();
   });
 
   it("mostra 'Repor na fila' apenas para itens cancelled/problem, e 'Cancelar' para tudo exceto completed", async () => {

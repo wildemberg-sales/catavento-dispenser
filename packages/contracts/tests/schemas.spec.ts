@@ -123,6 +123,7 @@ describe("queue schemas", () => {
         attributes: {},
         assemblyItems: ["Base de isopor 25cm"],
         images: [{ url: "http://x/1.png", position: 0 }],
+        createdAt: new Date().toISOString(),
       },
     });
     expect(withProduct.success).toBe(true);

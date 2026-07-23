@@ -64,6 +64,7 @@ export async function createQueueItem(
     externalRef?: string;
     productId?: string | null;
     payload?: Record<string, unknown>;
+    createdAt?: Date;
   }
 ) {
   const [item] = await db
@@ -76,6 +77,7 @@ export async function createQueueItem(
       status: overrides.status ?? "pending",
       productId: overrides.productId ?? null,
       payload: overrides.payload ?? { nome: "Produto de teste" },
+      ...(overrides.createdAt ? { createdAt: overrides.createdAt } : {}),
     })
     .returning();
   return item!;

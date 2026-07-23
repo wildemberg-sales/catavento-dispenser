@@ -26,4 +26,19 @@ describe("TrendChart", () => {
     expect(container.querySelector(".recharts-line")).toBeTruthy();
     expect(container.querySelector(".recharts-bar")).toBeNull();
   });
+
+  it("com dateTimeAxis, renderiza sem quebrar e reserva mais altura pro eixo X (duas linhas)", () => {
+    const dateTimeData = [
+      { bucket: "2026-03-05T09:07:03.000Z", value: 3 },
+      { bucket: "2026-03-06T14:00:00.000Z", value: 5 },
+    ];
+    const { container } = render(
+      <TrendChart data={dateTimeData} xKey="bucket" yKey="value" variant="bar" dateTimeAxis width={400} height={200} />
+    );
+
+    const svg = container.querySelector("svg.recharts-surface");
+    expect(svg).toBeTruthy();
+    const axisLine = container.querySelector(".recharts-cartesian-axis-line");
+    expect(axisLine?.getAttribute("height")).toBe("44");
+  });
 });

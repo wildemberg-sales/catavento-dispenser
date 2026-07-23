@@ -10,6 +10,7 @@ import { Button } from "../../components/Button";
 import { TrendChart } from "../../components/charts/TrendChart";
 import { colors } from "../../theme/colors";
 import { typography } from "../../theme/typography";
+import { startOfDayIso, endOfDayIso } from "../../utils/dateRange";
 
 const TABS = [
   { key: "by-operator", label: "Por operador" },
@@ -18,14 +19,6 @@ const TABS = [
   { key: "operator-report", label: "Relatório individual" },
 ] as const;
 type TabKey = (typeof TABS)[number]["key"];
-
-function startOfDayIso(date: string): string {
-  return new Date(`${date}T00:00:00.000Z`).toISOString();
-}
-
-function endOfDayIso(date: string): string {
-  return new Date(`${date}T23:59:59.999Z`).toISOString();
-}
 
 function defaultDateRange(): { from: string; to: string } {
   const today = new Date();
@@ -256,7 +249,7 @@ export function ReportsScreen() {
               Por hora
             </button>
           </div>
-          <TrendChart data={throughputPoints ?? []} xKey="bucket" yKey="completedCount" variant="bar" />
+          <TrendChart data={throughputPoints ?? []} xKey="bucket" yKey="completedCount" variant="bar" dateTimeAxis />
         </Card>
       ) : null}
 
@@ -329,7 +322,7 @@ export function ReportsScreen() {
 
               <Card style={styles.throughputCard}>
                 <h2 style={styles.sectionTitle}>Série temporal</h2>
-                <TrendChart data={operatorReport.timeSeries} xKey="date" yKey="completedCount" variant="line" />
+                <TrendChart data={operatorReport.timeSeries} xKey="date" yKey="completedCount" variant="line" dateTimeAxis />
               </Card>
             </>
           ) : null}

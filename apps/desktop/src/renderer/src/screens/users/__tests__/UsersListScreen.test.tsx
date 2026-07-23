@@ -1,6 +1,6 @@
 import React from "react";
 import { describe, expect, it, vi } from "vitest";
-import { render, screen, waitFor, fireEvent } from "@testing-library/react";
+import { render, screen, waitFor, fireEvent, within } from "@testing-library/react";
 import { MemoryRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "../../../auth/AuthContext";
 import { UsersListScreen } from "../UsersListScreen";
@@ -41,12 +41,17 @@ function user(overrides: Partial<Record<string, unknown>> = {}) {
 }
 
 describe("UsersListScreen", () => {
-  it("lista usuários com nome, papel e status", async () => {
+  it("lista usuários com nome, papel e status, sem inputs de edição inline", async () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { items: [user()], total: 1, page: 1, pageSize: 20 }));
     renderScreen(fetchMock);
 
-    expect(await screen.findByText("op1")).toBeTruthy();
-    expect(screen.getByText("Ativo")).toBeTruthy();
+    await screen.findByText("op1");
+    const row = within(screen.getByText("op1").closest("tr")!);
+    expect(row.getByText("Operador Um")).toBeTruthy();
+    expect(row.getByText("operator")).toBeTruthy();
+    expect(row.getByText("Ativo")).toBeTruthy();
+    expect(screen.queryByTestId("displayname-input-user-1")).toBeNull();
+    expect(screen.queryByTestId("role-select-user-1")).toBeNull();
   });
 
   it("filtro de papel refaz a listagem com o papel escolhido", async () => {
@@ -75,7 +80,19 @@ describe("UsersListScreen", () => {
     });
   });
 
-  it("edita e salva o nome de exibição", async () => {
+  it("clicar em Editar abre o modal pré-preenchido com os dados do usuário", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { items: [user()], total: 1, page: 1, pageSize: 20 }));
+    renderScreen(fetchMock);
+
+    await screen.findByText("op1");
+    fireEvent.click(screen.getByTestId("edit-user-1"));
+
+    expect(await screen.findByText("Editar op1")).toBeTruthy();
+    expect(screen.getByTestId("edit-user-displayname")).toHaveValue("Operador Um");
+    expect(screen.getByTestId("edit-user-role")).toHaveValue("operator");
+  });
+
+  it("salvar no modal atualiza o usuário, fecha o modal e reconsulta a lista", async () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(jsonResponse(200, { items: [user()], total: 1, page: 1, pageSize: 20 }))
@@ -84,35 +101,33 @@ describe("UsersListScreen", () => {
     renderScreen(fetchMock);
 
     await screen.findByText("op1");
-    fireEvent.change(screen.getByTestId("displayname-input-user-1"), { target: { value: "Novo Nome" } });
-    fireEvent.click(screen.getByTestId("save-displayname-user-1"));
+    fireEvent.click(screen.getByTestId("edit-user-1"));
+    await screen.findByTestId("edit-user-displayname");
+    fireEvent.change(screen.getByTestId("edit-user-displayname"), { target: { value: "Novo Nome" } });
+    fireEvent.click(screen.getByTestId("edit-user-submit"));
 
     await waitFor(() => {
       const call = fetchMock.mock.calls.find(
         ([u, options]) => String(u).endsWith("/admin/users/user-1") && (options as RequestInit)?.method === "PUT"
       );
       expect(call).toBeTruthy();
-      expect(JSON.parse((call![1] as RequestInit).body as string)).toEqual({ displayName: "Novo Nome" });
+      expect(JSON.parse((call![1] as RequestInit).body as string)).toEqual({ displayName: "Novo Nome", role: "operator" });
     });
+    await waitFor(() => expect(screen.queryByTestId("edit-user-displayname")).toBeNull());
+    expect(await screen.findByText("Novo Nome")).toBeTruthy();
   });
 
-  it("muda o papel via select", async () => {
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValueOnce(jsonResponse(200, { items: [user()], total: 1, page: 1, pageSize: 20 }))
-      .mockResolvedValueOnce(jsonResponse(200, user({ role: "admin" })))
-      .mockResolvedValue(jsonResponse(200, { items: [user({ role: "admin" })], total: 1, page: 1, pageSize: 20 }));
+  it("cancelar no modal fecha sem chamar o endpoint", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { items: [user()], total: 1, page: 1, pageSize: 20 }));
     renderScreen(fetchMock);
 
     await screen.findByText("op1");
-    fireEvent.change(screen.getByTestId("role-select-user-1"), { target: { value: "admin" } });
+    fireEvent.click(screen.getByTestId("edit-user-1"));
+    await screen.findByTestId("edit-user-displayname");
+    fireEvent.click(screen.getByTestId("edit-user-cancel"));
 
-    await waitFor(() => {
-      const call = fetchMock.mock.calls.find(
-        ([u, options]) => String(u).endsWith("/admin/users/user-1") && (options as RequestInit)?.method === "PUT"
-      );
-      expect(JSON.parse((call![1] as RequestInit).body as string)).toEqual({ role: "admin" });
-    });
+    await waitFor(() => expect(screen.queryByTestId("edit-user-displayname")).toBeNull());
+    expect(fetchMock.mock.calls.some(([, options]) => (options as RequestInit)?.method === "PUT")).toBe(false);
   });
 
   it("desativa e reativa um usuário", async () => {
@@ -131,41 +146,6 @@ describe("UsersListScreen", () => {
 
     fireEvent.click(screen.getByTestId("reactivate-user-1"));
     await screen.findByTestId("deactivate-user-1");
-  });
-
-  it("fluxo de redefinir senha", async () => {
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValueOnce(jsonResponse(200, { items: [user()], total: 1, page: 1, pageSize: 20 }))
-      .mockResolvedValueOnce({ ok: true, status: 204, json: async () => undefined } as unknown as Response);
-    renderScreen(fetchMock);
-
-    await screen.findByText("op1");
-    fireEvent.click(screen.getByTestId("reset-password-user-1"));
-    fireEvent.change(screen.getByTestId("reset-password-input-user-1"), { target: { value: "nova-senha-123" } });
-    fireEvent.click(screen.getByTestId("reset-password-confirm-user-1"));
-
-    await waitFor(() => {
-      const call = fetchMock.mock.calls.find(([u]) => String(u).includes("/reset-password"));
-      expect(call).toBeTruthy();
-      expect(JSON.parse((call![1] as RequestInit).body as string)).toEqual({ newPassword: "nova-senha-123" });
-    });
-    await waitFor(() => expect(screen.queryByTestId("reset-password-input-user-1")).toBeNull());
-  });
-
-  it("mostra erro quando a redefinição de senha falha", async () => {
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValueOnce(jsonResponse(200, { items: [user()], total: 1, page: 1, pageSize: 20 }))
-      .mockResolvedValueOnce(jsonResponse(400, { error: "VALIDATION_ERROR", message: "Senha muito curta." }));
-    renderScreen(fetchMock);
-
-    await screen.findByText("op1");
-    fireEvent.click(screen.getByTestId("reset-password-user-1"));
-    fireEvent.change(screen.getByTestId("reset-password-input-user-1"), { target: { value: "123" } });
-    fireEvent.click(screen.getByTestId("reset-password-confirm-user-1"));
-
-    expect(await screen.findByText("Senha muito curta.")).toBeTruthy();
   });
 
   it("botão de novo usuário navega pro cadastro", async () => {
@@ -219,30 +199,5 @@ describe("UsersListScreen", () => {
 
     await screen.findByTestId("deactivate-op-1");
     expect(screen.queryByTestId("deactivate-admin-1")).toBeNull();
-  });
-
-  it("clicar em Salvar sem editar o nome não chama o endpoint", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { items: [user()], total: 1, page: 1, pageSize: 20 }));
-    renderScreen(fetchMock);
-
-    await screen.findByText("op1");
-    fireEvent.click(screen.getByTestId("save-displayname-user-1"));
-
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
-  });
-
-  it("mostra erro genérico quando a redefinição de senha falha por um motivo que não é erro de domínio", async () => {
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValueOnce(jsonResponse(200, { items: [user()], total: 1, page: 1, pageSize: 20 }))
-      .mockRejectedValueOnce(new Error("falha de rede"));
-    renderScreen(fetchMock);
-
-    await screen.findByText("op1");
-    fireEvent.click(screen.getByTestId("reset-password-user-1"));
-    fireEvent.change(screen.getByTestId("reset-password-input-user-1"), { target: { value: "nova-senha-123" } });
-    fireEvent.click(screen.getByTestId("reset-password-confirm-user-1"));
-
-    expect(await screen.findByText("Não foi possível redefinir a senha.")).toBeTruthy();
   });
 });

@@ -28,13 +28,11 @@ test("cria, desativa, reativa e redefine a senha de um usuário", async () => {
     await reactivateButton.click();
     await expect(row.getByText("Ativo")).toBeVisible();
 
-    const resetButton = row.locator('[data-testid^="reset-password-"]');
-    await resetButton.click();
-    const passwordInput = row.locator('[data-testid^="reset-password-input-"]');
-    await passwordInput.fill(`nova-senha-${runId}`);
-    const confirmButton = row.locator('[data-testid^="reset-password-confirm-"]');
-    await confirmButton.click();
-    await expect(passwordInput).toHaveCount(0);
+    const editButton = row.locator('[data-testid^="edit-"]');
+    await editButton.click();
+    await window.getByTestId("edit-user-password").fill(`nova-senha-${runId}`);
+    await window.getByTestId("edit-user-submit").click();
+    await expect(window.getByTestId("edit-user-password")).toHaveCount(0);
   } finally {
     await app.close();
   }

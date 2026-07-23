@@ -8,6 +8,7 @@ export type LinkedProductRow = {
   attributes: unknown;
   assemblyItems: unknown;
   images: Array<{ url: string; position: number }>;
+  createdAt: string;
 };
 
 export function toQueueItemDto(row: QueueItemRow, linkedProduct: LinkedProductRow | null = null): QueueItemDTO {
@@ -22,6 +23,7 @@ export function toQueueItemDto(row: QueueItemRow, linkedProduct: LinkedProductRo
           .slice()
           .sort((a, b) => a.position - b.position)
           .map((img) => ({ url: img.url, position: img.position })),
+        createdAt: linkedProduct.createdAt,
       }
     : null;
 

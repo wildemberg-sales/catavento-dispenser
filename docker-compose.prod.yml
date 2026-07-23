@@ -27,6 +27,9 @@ services:
       context: .
       dockerfile: apps/server/Dockerfile
       target: prod
+    # Nome próprio pra não colidir com a imagem "catavento-server:dev" do
+    # docker-compose.yml — ver comentário equivalente lá.
+    image: catavento-server:prod
     restart: unless-stopped
     depends_on:
       postgres:

@@ -19,8 +19,8 @@ export default async function adminQueueRoutes(app: FastifyInstance) {
 
   app.get("/", { preHandler: [requireAuth(app), requireRole("admin")] }, async (req, reply) => {
     const query = adminQueueQuerySchema.parse(req.query);
-    const { status, batchId, ...pagination } = query;
-    const result = await service.listForAdmin({ status, batchId }, pagination);
+    const { status, batchId, source, from, to, q, ...pagination } = query;
+    const result = await service.listForAdmin({ status, batchId, source, from, to, q }, pagination);
     return reply.status(200).send(result);
   });
 

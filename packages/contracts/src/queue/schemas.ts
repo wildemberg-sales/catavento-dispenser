@@ -24,6 +24,7 @@ export const linkedProductSchema = z.object({
   attributes: z.record(z.string(), z.unknown()),
   assemblyItems: z.array(z.string()),
   images: z.array(z.object({ url: z.string(), position: z.number().int() })),
+  createdAt: z.string().datetime(),
 });
 export type LinkedProduct = z.infer<typeof linkedProductSchema>;
 
@@ -80,6 +81,13 @@ export const adminQueueQuerySchema = z
   .object({
     status: queueItemStatusSchema.optional(),
     batchId: z.string().uuid().optional(),
+    source: sourceTypeSchema.optional(),
+    from: z.string().datetime().optional(),
+    to: z.string().datetime().optional(),
+    q: z.string().min(1).max(200).optional(),
   })
-  .merge(paginationQuerySchema);
+  .merge(paginationQuerySchema)
+  .refine((v) => !v.from || !v.to || new Date(v.to) > new Date(v.from), {
+    message: "'to' deve ser posterior a 'from'.",
+  });
 export type AdminQueueQuery = z.infer<typeof adminQueueQuerySchema>;

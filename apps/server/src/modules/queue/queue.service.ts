@@ -1,6 +1,6 @@
-import type { NextItemResponse, QueueItemStatus } from "@catavento/contracts/queue";
+import type { NextItemResponse, QueueItemStatus, SourceType } from "@catavento/contracts/queue";
 import type { QueueRepository } from "./queue.repository.js";
-import { toQueueItemDto } from "./queue.mapper.js";
+import { toQueueItemDto, type LinkedProductRow } from "./queue.mapper.js";
 import { calculateDurationSeconds } from "../../lib/time.js";
 import {
   AlreadyCompletedError,
@@ -83,12 +83,33 @@ export function queueService(deps: { repo: QueueRepository }) {
     },
 
     async listForAdmin(
-      filters: { status?: QueueItemStatus | undefined; batchId?: string | undefined },
+      filters: {
+        status?: QueueItemStatus | undefined;
+        batchId?: string | undefined;
+        source?: SourceType | undefined;
+        from?: string | undefined;
+        to?: string | undefined;
+        q?: string | undefined;
+      },
       pagination: { page: number; pageSize: number }
     ) {
       const { items, total } = await repo.adminListItems(filters, pagination);
       return {
-        items: items.map((row) => toQueueItemDto({ ...row, payload: row.payload as Record<string, unknown> })),
+        items: items.map((row) => {
+          const linkedProduct: LinkedProductRow | null =
+            row.productId && row.productName
+              ? {
+                  id: row.productId,
+                  name: row.productName,
+                  description: row.productDescription,
+                  attributes: row.productAttributes,
+                  assemblyItems: row.productAssemblyItems,
+                  images: [],
+                  createdAt: row.productCreatedAt!.toISOString(),
+                }
+              : null;
+          return toQueueItemDto({ ...row, payload: row.payload as Record<string, unknown> }, linkedProduct);
+        }),
         total,
         page: pagination.page,
         pageSize: pagination.pageSize,

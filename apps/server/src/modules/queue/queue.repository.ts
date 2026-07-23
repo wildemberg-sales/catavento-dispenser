@@ -1,4 +1,4 @@
-import { and, count, desc, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, count, desc, eq, gte, inArray, isNull, lte, sql } from "drizzle-orm";
 import { schema, type DbInstance } from "@catavento/db";
 import { findSuggestionsForItem } from "../products/suggestion.js";
 
@@ -132,25 +132,74 @@ export function queueRepository(db: DbInstance) {
       });
     },
 
+    // Busca textual (Q) cobre tanto itens já vinculados a um produto do
+    // catálogo (products.name é a fonte de verdade) quanto itens ainda sem
+    // vínculo, cujo "nome" só existe dentro do payload bruto da importação —
+    // e nem sempre com a mesma chave (a planilha de origem decide o header),
+    // por isso o fallback tenta 'nome' e 'name' antes de cair pro externalRef.
     async adminListItems(
-      filters: { status?: QueueItemRow["status"] | undefined; batchId?: string | undefined },
+      filters: {
+        status?: QueueItemRow["status"] | undefined;
+        batchId?: string | undefined;
+        source?: QueueItemRow["source"] | undefined;
+        from?: string | undefined;
+        to?: string | undefined;
+        q?: string | undefined;
+      },
       pagination: { page: number; pageSize: number }
     ) {
       const conditions = [];
       if (filters.status) conditions.push(eq(schema.queueItems.status, filters.status));
       if (filters.batchId) conditions.push(eq(schema.queueItems.batchId, filters.batchId));
+      if (filters.source) conditions.push(eq(schema.queueItems.source, filters.source));
+      if (filters.from) conditions.push(gte(schema.queueItems.createdAt, new Date(filters.from)));
+      if (filters.to) conditions.push(lte(schema.queueItems.createdAt, new Date(filters.to)));
+      if (filters.q) {
+        const term = `%${filters.q}%`;
+        conditions.push(sql`(
+          ${schema.products.name} ILIKE ${term}
+          OR ${schema.queueItems.payload}->>'nome' ILIKE ${term}
+          OR ${schema.queueItems.payload}->>'name' ILIKE ${term}
+          OR ${schema.queueItems.externalRef} ILIKE ${term}
+        )`);
+      }
       const where = conditions.length > 0 ? and(...conditions) : undefined;
+
+      // O join com products já existe pra viabilizar o filtro `q` — aproveita
+      // pra trazer os dados do produto vinculado junto (evita N+1 chamando
+      // findLinkedProduct por linha; a lista já busca até 100 itens de uma vez).
+      const columns = {
+        id: schema.queueItems.id,
+        batchId: schema.queueItems.batchId,
+        externalRef: schema.queueItems.externalRef,
+        source: schema.queueItems.source,
+        productId: schema.queueItems.productId,
+        payload: schema.queueItems.payload,
+        priority: schema.queueItems.priority,
+        status: schema.queueItems.status,
+        createdAt: schema.queueItems.createdAt,
+        productName: schema.products.name,
+        productDescription: schema.products.description,
+        productAttributes: schema.products.attributes,
+        productAssemblyItems: schema.products.assemblyItems,
+        productCreatedAt: schema.products.createdAt,
+      };
 
       const offset = (pagination.page - 1) * pagination.pageSize;
       const [items, totalRows] = await Promise.all([
         db
-          .select()
+          .select(columns)
           .from(schema.queueItems)
+          .leftJoin(schema.products, eq(schema.queueItems.productId, schema.products.id))
           .where(where)
           .orderBy(desc(schema.queueItems.sequence))
           .limit(pagination.pageSize)
           .offset(offset),
-        db.select({ total: count() }).from(schema.queueItems).where(where),
+        db
+          .select({ total: count() })
+          .from(schema.queueItems)
+          .leftJoin(schema.products, eq(schema.queueItems.productId, schema.products.id))
+          .where(where),
       ]);
       return { items, total: Number(totalRows[0]!.total) };
     },
@@ -253,6 +302,7 @@ export function queueRepository(db: DbInstance) {
         attributes: product.attributes,
         assemblyItems: product.assemblyItems,
         images: images.map((img) => ({ url: img.url, position: img.position })),
+        createdAt: product.createdAt.toISOString(),
       };
     },
 
