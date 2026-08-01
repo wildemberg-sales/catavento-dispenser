@@ -24,7 +24,7 @@ test("navega pelas abas de relatórios contra o backend real", async () => {
     await expect(window.locator("svg.recharts-surface")).toBeVisible();
 
     await window.getByTestId("tab-operator-report").click();
-    await window.getByTestId("operator-select").waitFor();
+    await window.getByTestId("operator-search").waitFor();
   } finally {
     await app.close();
   }

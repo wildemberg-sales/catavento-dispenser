@@ -21,10 +21,15 @@ function createWindow(): void {
     minHeight: 560,
     show: false,
     webPreferences: {
-      preload: join(__dirname, "../preload/index.mjs"),
+      preload: join(__dirname, "../preload/index.cjs"),
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: false,
+      // Sandboxed em produção — o preload só usa contextBridge/ipcRenderer,
+      // ambos suportados sob sandbox, então não há perda de funcionalidade.
+      // Desligado em dev (mesmo sinal usado acima pra escolher loadURL vs
+      // loadFile) por precaução, pra não arriscar quebrar o hot-reload do
+      // electron-vite sem necessidade.
+      sandbox: !process.env.ELECTRON_RENDERER_URL,
     },
   });
 
