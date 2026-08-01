@@ -13,11 +13,13 @@ import { ApiClientError } from "../../api/client";
 import { Card } from "../../components/Card";
 import { PageHeader } from "../../components/PageHeader";
 import { Button } from "../../components/Button";
-import { PaginationBar } from "../../components/PaginationBar";
-import { TrendChart } from "../../components/charts/TrendChart";
 import { colors } from "../../theme/colors";
 import { typography } from "../../theme/typography";
 import { startOfDayIso, endOfDayIso } from "../../utils/dateRange";
+import { OperatorReportTab } from "./OperatorReportTab";
+import { ProductReportTab } from "./ProductReportTab";
+import { ThroughputTab } from "./ThroughputTab";
+import { IndividualReportTab } from "./IndividualReportTab";
 
 const TABS = [
   { key: "by-operator", label: "Por operador" },
@@ -35,12 +37,6 @@ function defaultDateRange(): { from: string; to: string } {
 }
 
 const PAGE_SIZE = 20;
-
-const OUTCOME_LABELS: Record<string, string> = {
-  completed: "Concluído",
-  abandoned: "Abandonado",
-  problem: "Problema",
-};
 
 // Antes as abas "Por operador" e "Por produto" sempre pediam a página 1 sem
 // nenhum controle — qualquer operador/produto além do 20º ficava invisível,
@@ -252,261 +248,43 @@ export function ReportsScreen() {
       {error ? <p style={styles.error}>{error}</p> : null}
 
       {activeTab === "by-operator" ? (
-        <Card className="table-wrapper">
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>Operador</th>
-                <th>Concluídos</th>
-                <th>Problemas</th>
-                <th>Abandonados</th>
-                <th>Em andamento</th>
-                <th>Duração média (s)</th>
-                <th>Taxa de conclusão</th>
-              </tr>
-            </thead>
-            <tbody>
-              {(operatorRows ?? []).map((row) => (
-                <tr key={row.operatorId}>
-                  <td style={styles.strong}>{row.displayName}</td>
-                  <td>{row.completedCount}</td>
-                  <td>{row.problemCount}</td>
-                  <td>{row.abandonedCount}</td>
-                  <td>{row.inProgressCount}</td>
-                  <td>{row.avgDurationSeconds ?? "-"}</td>
-                  <td>{Math.round(row.completionRate * 100)}%</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          <PaginationBar
-            page={operatorPage}
-            total={operatorTotal}
-            pageSize={PAGE_SIZE}
-            onChange={setOperatorPage}
-            testIdPrefix="operator-page"
-            variant="ghost"
-            showTotal
-            hideWhenSinglePage
-          />
-        </Card>
+        <OperatorReportTab
+          rows={operatorRows}
+          page={operatorPage}
+          total={operatorTotal}
+          pageSize={PAGE_SIZE}
+          onPageChange={setOperatorPage}
+        />
       ) : null}
 
       {activeTab === "by-product" ? (
-        <Card className="table-wrapper">
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>Produto</th>
-                <th>Concluídos</th>
-                <th>Duração média (s)</th>
-                <th>Desvio padrão (s)</th>
-                <th>Operadores distintos</th>
-              </tr>
-            </thead>
-            <tbody>
-              {(productRows ?? []).map((row) => (
-                <tr key={row.productId}>
-                  <td style={styles.strong}>{row.productName}</td>
-                  <td>{row.completedCount}</td>
-                  <td>{row.avgDurationSeconds ?? "-"}</td>
-                  <td>{row.stddevDurationSeconds ?? "-"}</td>
-                  <td>{row.distinctOperators}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          <PaginationBar
-            page={productPage}
-            total={productTotal}
-            pageSize={PAGE_SIZE}
-            onChange={setProductPage}
-            testIdPrefix="product-page"
-            variant="ghost"
-            showTotal
-            hideWhenSinglePage
-          />
-        </Card>
+        <ProductReportTab
+          rows={productRows}
+          page={productPage}
+          total={productTotal}
+          pageSize={PAGE_SIZE}
+          onPageChange={setProductPage}
+        />
       ) : null}
 
-      {activeTab === "throughput" ? (
-        <Card style={styles.throughputCard}>
-          <div style={styles.bucketRow}>
-            <button
-              data-testid="bucket-day"
-              className={`btn btn-sm ${bucket === "day" ? "btn-primary" : "btn-ghost"}`}
-              onClick={() => setBucket("day")}
-            >
-              Por dia
-            </button>
-            <button
-              data-testid="bucket-hour"
-              className={`btn btn-sm ${bucket === "hour" ? "btn-primary" : "btn-ghost"}`}
-              onClick={() => setBucket("hour")}
-            >
-              Por hora
-            </button>
-          </div>
-          <TrendChart data={throughputPoints ?? []} xKey="bucket" yKey="completedCount" variant="bar" dateTimeAxis />
-        </Card>
-      ) : null}
+      {activeTab === "throughput" ? <ThroughputTab points={throughputPoints} bucket={bucket} onBucketChange={setBucket} /> : null}
 
       {activeTab === "operator-report" ? (
-        <div style={styles.operatorReportSection}>
-          <Card style={styles.filterCard}>
-            <label style={styles.filterLabel}>
-              Operador
-              <div style={styles.comboboxWrapper}>
-                <input
-                  data-testid="operator-search"
-                  className="field"
-                  type="text"
-                  placeholder="Buscar operador…"
-                  value={operatorQuery}
-                  onChange={(event) => handleOperatorQueryChange(event.target.value)}
-                  onFocus={() => setShowOperatorSuggestions(true)}
-                  onBlur={() => setShowOperatorSuggestions(false)}
-                />
-                {showOperatorSuggestions && filteredOperators.length > 0 ? (
-                  <ul style={styles.suggestionList} data-testid="operator-suggestions">
-                    {filteredOperators.map((operator) => (
-                      <li key={operator.id}>
-                        <button
-                          type="button"
-                          data-testid={`operator-suggestion-${operator.id}`}
-                          style={styles.suggestionItem}
-                          onMouseDown={(event) => event.preventDefault()}
-                          onClick={() => handleSelectOperator(operator)}
-                        >
-                          {operator.displayName}
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                ) : null}
-              </div>
-            </label>
-          </Card>
-
-          {operatorReport ? (
-            <>
-              <div style={styles.statsRow}>
-                <Card style={styles.statCard}>
-                  <span style={styles.statLabel}>Itens por hora</span>
-                  <span style={styles.statValue}>{operatorReport.overview.productivity.itemsPerHour.toFixed(1)}</span>
-                </Card>
-                <Card style={styles.statCard}>
-                  <span style={styles.statLabel}>Taxa de conclusão</span>
-                  <span style={styles.statValue}>{Math.round(operatorReport.overview.quality.completionRate * 100)}%</span>
-                </Card>
-                <Card style={styles.statCard}>
-                  <span style={styles.statLabel}>Taxa de problemas</span>
-                  <span style={styles.statValue}>{Math.round(operatorReport.overview.quality.problemRate * 100)}%</span>
-                </Card>
-                <Card style={styles.statCard}>
-                  <span style={styles.statLabel}>Taxa de abandono</span>
-                  <span style={styles.statValue}>{Math.round(operatorReport.overview.quality.abandonmentRate * 100)}%</span>
-                </Card>
-                <Card style={styles.statCard}>
-                  <span style={styles.statLabel}>Índice de qualidade</span>
-                  <span style={styles.statValue}>{operatorReport.overview.quality.qualityIndex.toFixed(2)}</span>
-                </Card>
-                <Card style={styles.statCard}>
-                  <span style={styles.statLabel}>Índice de pontualidade</span>
-                  <span style={styles.statValue}>{operatorReport.overview.punctuality.punctualityIndex ?? "-"}</span>
-                </Card>
-                <Card style={styles.statCard}>
-                  <span style={styles.statLabel}>Intervalo médio entre itens (s)</span>
-                  <span style={styles.statValue}>{operatorReport.overview.punctuality.avgGapSeconds ?? "-"}</span>
-                </Card>
-                <Card style={styles.statCard}>
-                  <span style={styles.statLabel}>Variação de duração (CV)</span>
-                  <span style={styles.statValue}>
-                    {operatorReport.overview.punctuality.durationCoefficientOfVariation?.toFixed(2) ?? "-"}
-                  </span>
-                </Card>
-                <Card style={styles.statCard}>
-                  <span style={styles.statLabel}>Posição no ranking</span>
-                  <span style={styles.statValue}>
-                    {`${operatorReport.ranking.positionAmongOperators ?? "-"} de ${operatorReport.ranking.totalOperatorsRanked}`}
-                  </span>
-                </Card>
-                <Card style={styles.statCard}>
-                  <span style={styles.statLabel}>Velocidade relativa (ponderada)</span>
-                  <span style={styles.statValue}>{operatorReport.ranking.weightedRelativeSpeedScore?.toFixed(2) ?? "-"}</span>
-                </Card>
-              </div>
-
-              <Card className="table-wrapper">
-                <table className="data-table">
-                  <thead>
-                    <tr>
-                      <th>Produto</th>
-                      <th>Concluídos</th>
-                      <th>Duração média (s)</th>
-                      <th>Média da equipe (s)</th>
-                      <th>Índice de velocidade relativa</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {operatorReport.byProduct.map((row) => (
-                      <tr key={row.productId}>
-                        <td style={styles.strong}>{row.productName}</td>
-                        <td>{row.completedCount}</td>
-                        <td>{row.avgDurationSeconds ?? "-"}</td>
-                        <td>{row.teamAvgDurationSeconds ?? "-"}</td>
-                        <td>{row.relativeSpeedIndex?.toFixed(2) ?? "-"}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </Card>
-
-              <Card style={styles.throughputCard}>
-                <h2 style={styles.sectionTitle}>Série temporal</h2>
-                <TrendChart data={operatorReport.timeSeries} xKey="date" yKey="completedCount" variant="line" dateTimeAxis />
-              </Card>
-
-              <Card className="table-wrapper">
-                <h2 style={styles.sectionTitle}>Itens do período</h2>
-                <table className="data-table">
-                  <thead>
-                    <tr>
-                      <th>Produto</th>
-                      <th>Resultado</th>
-                      <th>Início</th>
-                      <th>Conclusão</th>
-                      <th>Duração (s)</th>
-                      <th>Observação do problema</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {(reportItems ?? []).map((item) => (
-                      <tr key={item.workLogId}>
-                        <td style={styles.strong}>{item.productName ?? "(sem produto)"}</td>
-                        <td>{item.outcome ? (OUTCOME_LABELS[item.outcome] ?? item.outcome) : "Em andamento"}</td>
-                        <td>{new Date(item.startedAt).toLocaleString()}</td>
-                        <td>{item.completedAt ? new Date(item.completedAt).toLocaleString() : "-"}</td>
-                        <td>{item.durationSeconds ?? "-"}</td>
-                        <td>{item.problemNote ?? "-"}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-                <PaginationBar
-                  page={reportItemsPage}
-                  total={reportItemsTotal}
-                  pageSize={PAGE_SIZE}
-                  onChange={setReportItemsPage}
-                  testIdPrefix="report-items-page"
-                  variant="ghost"
-                  showTotal
-                  hideWhenSinglePage
-                />
-              </Card>
-            </>
-          ) : null}
-        </div>
+        <IndividualReportTab
+          operatorQuery={operatorQuery}
+          onQueryChange={handleOperatorQueryChange}
+          showSuggestions={showOperatorSuggestions}
+          filteredOperators={filteredOperators}
+          onFocus={() => setShowOperatorSuggestions(true)}
+          onBlur={() => setShowOperatorSuggestions(false)}
+          onSelectOperator={handleSelectOperator}
+          operatorReport={operatorReport}
+          reportItems={reportItems}
+          reportItemsPage={reportItemsPage}
+          reportItemsTotal={reportItemsTotal}
+          pageSize={PAGE_SIZE}
+          onReportItemsPageChange={setReportItemsPage}
+        />
       ) : null}
     </div>
   );
@@ -526,42 +304,4 @@ const styles: Record<string, React.CSSProperties> = {
   tabButtons: { display: "flex", flexWrap: "wrap", gap: 8 },
   exportButtons: { display: "flex", flexWrap: "wrap", gap: 8 },
   error: { ...typography.label, color: colors.danger, margin: 0 },
-  strong: { fontWeight: 600, color: colors.text },
-  throughputCard: { padding: 20, display: "flex", flexDirection: "column", gap: 14 },
-  bucketRow: { display: "flex", gap: 8 },
-  sectionTitle: { ...typography.sectionTitle, color: colors.secondary, margin: 0 },
-  operatorReportSection: { display: "flex", flexDirection: "column", gap: 20 },
-  statsRow: { display: "flex", flexWrap: "wrap", gap: 16 },
-  statCard: { padding: 16, minWidth: 160, display: "flex", flexDirection: "column", gap: 6 },
-  statLabel: { ...typography.label, color: colors.textMuted },
-  statValue: { ...typography.sectionTitle, color: colors.secondary },
-  comboboxWrapper: { position: "relative", minWidth: 260 },
-  suggestionList: {
-    position: "absolute",
-    top: "calc(100% + 4px)",
-    left: 0,
-    right: 0,
-    margin: 0,
-    padding: 6,
-    listStyle: "none",
-    backgroundColor: colors.surface,
-    border: `1px solid ${colors.border}`,
-    borderRadius: 10,
-    boxShadow: `0 8px 24px ${colors.shadowStrong}`,
-    zIndex: 10,
-    maxHeight: 240,
-    overflowY: "auto",
-  },
-  suggestionItem: {
-    ...typography.body,
-    display: "block",
-    width: "100%",
-    textAlign: "left",
-    padding: "8px 10px",
-    border: "none",
-    background: "none",
-    color: colors.text,
-    cursor: "pointer",
-    borderRadius: 6,
-  },
 };
