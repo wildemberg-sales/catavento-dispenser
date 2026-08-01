@@ -98,6 +98,17 @@ describe("MonitorScreen", () => {
     expect(await screen.findByText("Item atribuído a Fulano")).toBeTruthy();
   });
 
+  it("evento com operatorId desconhecido (fora da lista de operadores) mostra o próprio id como fallback de nome", async () => {
+    const sse = controllableStream();
+    renderScreen(buildFetchMock(sse));
+    await screen.findByText("4");
+    await flushMicrotasks();
+
+    sse.push('event: item_assigned\ndata: {"queueItemId":"item1","operatorId":"op-desconhecido","queueSize":7}\n\n');
+
+    expect(await screen.findByText("Item atribuído a op-desconhecido")).toBeTruthy();
+  });
+
   it("hidrata o snapshot inicial de operadores online, sem depender de eventos ao vivo", async () => {
     const sse = controllableStream();
     renderScreen(buildFetchMock(sse, [{ operatorId: "op-1", displayName: "Fulano" }]));

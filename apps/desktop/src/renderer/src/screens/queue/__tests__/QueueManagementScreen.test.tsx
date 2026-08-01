@@ -187,6 +187,9 @@ describe("QueueManagementScreen", () => {
     fireEvent.click(screen.getByTestId("page-next"));
 
     await waitFor(() => expect(fetchMock.mock.calls.at(-1)?.[0]).toContain("page=2"));
+
+    fireEvent.click(screen.getByTestId("page-prev"));
+    await waitFor(() => expect(fetchMock.mock.calls.at(-1)?.[0]).toContain("page=1"));
   });
 
   it("desabilita 'Próxima' na última página", async () => {
@@ -285,6 +288,30 @@ describe("QueueManagementScreen", () => {
     fireEvent.click(screen.getByTestId("priority-save"));
 
     expect(await screen.findByText("Regras de prioridade atualizadas.")).toBeTruthy();
+  });
+
+  it("editar o valor de prioridade de uma regra atualiza o input (updateRule)", async () => {
+    const fetchMock = withRulesMock(() => Promise.resolve(jsonResponse(200, { items: [], total: 0, page: 1, pageSize: 20 })));
+    renderScreen(fetchMock);
+
+    await waitFor(() => expect(screen.getByTestId("priority-mercado_livre")).toHaveValue(2));
+    fireEvent.change(screen.getByTestId("priority-mercado_livre"), { target: { value: "9" } });
+
+    expect(screen.getByTestId("priority-mercado_livre")).toHaveValue(9);
+  });
+
+  it("desmarcar o checkbox 'Ativa' de uma regra atualiza isActive (updateRule)", async () => {
+    const fetchMock = withRulesMock(() => Promise.resolve(jsonResponse(200, { items: [], total: 0, page: 1, pageSize: 20 })));
+    renderScreen(fetchMock);
+
+    await waitFor(() => expect(screen.getByTestId("priority-mercado_livre")).toHaveValue(2));
+    const checkbox = screen
+      .getByTestId("priority-mercado_livre")
+      .parentElement?.querySelector("input[type=checkbox]") as HTMLInputElement;
+    expect(checkbox.checked).toBe(true);
+
+    fireEvent.click(checkbox);
+    expect(checkbox.checked).toBe(false);
   });
 
   it("pré-preenche as regras de prioridade com o que já está salvo no servidor", async () => {

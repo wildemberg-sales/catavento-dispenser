@@ -269,4 +269,42 @@ describe("ProductForm — edição", () => {
 
     expect(await screen.findByText("Tipo de arquivo de imagem não suportado. Envie JPEG, PNG ou WebP.")).toBeTruthy();
   });
+
+  it("carrega um produto existente sem assemblyItems/skus (campos ausentes na resposta) sem quebrar", async () => {
+    const existing = product({ assemblyItems: undefined, skus: undefined });
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, existing));
+    renderScreen(fetchMock, { initialEntry: "/products/prod-1/edit" });
+
+    expect(await screen.findByTestId("product-name")).toHaveValue(existing.name);
+    expect(screen.getByTestId("sku-ebay")).toHaveValue("");
+  });
+
+  it("mostra mensagem padrão quando o upload de imagem falha por um motivo que não é erro de domínio", async () => {
+    const existing = product({ images: [] });
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(200, existing))
+      .mockRejectedValueOnce(new Error("falha de rede"));
+    renderScreen(fetchMock, { initialEntry: "/products/prod-1/edit" });
+
+    await waitFor(() => expect(screen.getByTestId("upload-image-input")).toBeTruthy());
+    const file = new File(["conteudo"], "novo.png", { type: "image/png" });
+    fireEvent.change(screen.getByTestId("upload-image-input"), { target: { files: [file] } });
+
+    expect(await screen.findByText("Não foi possível enviar a imagem.")).toBeTruthy();
+  });
+
+  it("mostra mensagem padrão quando salvar falha por um motivo que não é erro de domínio", async () => {
+    const existing = product();
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(200, existing))
+      .mockRejectedValueOnce(new Error("falha de rede"));
+    renderScreen(fetchMock, { initialEntry: "/products/prod-1/edit" });
+
+    await waitFor(() => expect(screen.getByTestId("product-name")).toBeTruthy());
+    fireEvent.click(screen.getByTestId("product-submit"));
+
+    expect(await screen.findByText("Não foi possível salvar o produto.")).toBeTruthy();
+  });
 });

@@ -11,6 +11,22 @@ describe("App", () => {
     vi.unstubAllGlobals();
   });
 
+  it("mostra o indicador de carregamento antes da sessão ser restaurada", async () => {
+    window.catavento = {
+      secureStore: {
+        get: vi.fn().mockResolvedValue(null),
+        set: vi.fn().mockResolvedValue(undefined),
+        delete: vi.fn().mockResolvedValue(undefined),
+      },
+    };
+    vi.stubGlobal("fetch", vi.fn());
+
+    render(<App />);
+
+    expect(screen.getByTestId("app-loading")).toBeTruthy();
+    await waitFor(() => expect(screen.getByTestId("login-submit")).toBeTruthy());
+  });
+
   it("mostra a tela de login quando não há sessão restaurável", async () => {
     window.catavento = {
       secureStore: {

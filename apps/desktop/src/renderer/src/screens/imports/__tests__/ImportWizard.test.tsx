@@ -192,4 +192,116 @@ describe("ImportWizard", () => {
 
     expect(await screen.findByText("Arquivo inválido.")).toBeTruthy();
   });
+
+  it("limpar a seleção de arquivo (sem nenhum File) volta o estado pra 'nenhum arquivo selecionado'", async () => {
+    const fetchMock = vi.fn();
+    renderWizard(fetchMock);
+
+    const file = new File(["conteudo"], "pedidos.csv", { type: "text/csv" });
+    fireEvent.change(screen.getByTestId("upload-file-input"), { target: { files: [file] } });
+    expect(screen.getByText("Selecionado: pedidos.csv")).toBeTruthy();
+
+    fireEvent.change(screen.getByTestId("upload-file-input"), { target: { files: [] } });
+    expect(screen.queryByText("Selecionado: pedidos.csv")).toBeNull();
+
+    fireEvent.click(screen.getByTestId("upload-submit"));
+    expect(await screen.findByText("Selecione um arquivo CSV ou XLSX para continuar.")).toBeTruthy();
+  });
+
+  it("mostra a linha rejeitada com o motivo, em vez de 'Sim'", async () => {
+    const previewWithRejected = {
+      ...previewResponse,
+      totalRows: 3,
+      validRows: 2,
+      rejectedRows: 1,
+      sampleRows: [
+        ...previewResponse.sampleRows,
+        { rowNumber: 3, externalRef: "ML-3", source: "mercado_livre", isValid: false, rejectionReason: "SKU duplicado" },
+      ],
+    };
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, previewWithRejected));
+    renderWizard(fetchMock);
+
+    const file = new File(["conteudo"], "pedidos.csv", { type: "text/csv" });
+    fireEvent.change(screen.getByTestId("upload-file-input"), { target: { files: [file] } });
+    fireEvent.click(screen.getByTestId("upload-submit"));
+
+    expect(await screen.findByText("SKU duplicado")).toBeTruthy();
+    expect(screen.getAllByText("Sim")).toHaveLength(2);
+  });
+
+  it("desmontar antes do upload resolver não seta estado num componente já desmontado", async () => {
+    let resolveUpload: (response: Response) => void = () => {};
+    const pendingUpload = new Promise<Response>((resolve) => {
+      resolveUpload = resolve;
+    });
+    const fetchMock = vi.fn().mockImplementationOnce(() => pendingUpload);
+    const { unmount } = renderWizard(fetchMock);
+
+    const file = new File(["conteudo"], "pedidos.csv", { type: "text/csv" });
+    fireEvent.change(screen.getByTestId("upload-file-input"), { target: { files: [file] } });
+    fireEvent.click(screen.getByTestId("upload-submit"));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+
+    unmount();
+    resolveUpload(jsonResponse(200, previewResponse));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    // não deve lançar/avisar sobre setState num componente desmontado
+  });
+
+  it("desmontar antes de um upload que falha resolver não seta estado num componente já desmontado", async () => {
+    let rejectUpload: (err: Response) => void = () => {};
+    const pendingUpload = new Promise<Response>((_resolve, reject) => {
+      rejectUpload = reject;
+    });
+    const fetchMock = vi.fn().mockImplementationOnce(() => pendingUpload);
+    const { unmount } = renderWizard(fetchMock);
+
+    const file = new File(["conteudo"], "pedidos.csv", { type: "text/csv" });
+    fireEvent.change(screen.getByTestId("upload-file-input"), { target: { files: [file] } });
+    fireEvent.click(screen.getByTestId("upload-submit"));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+
+    unmount();
+    rejectUpload(jsonResponse(400, { error: "INVALID_FILE", message: "Arquivo inválido." }));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+
+  it("desmontar antes de uma confirmação que falha resolver não seta estado num componente já desmontado", async () => {
+    let rejectConfirm: (err: Response) => void = () => {};
+    const pendingConfirm = new Promise<Response>((_resolve, reject) => {
+      rejectConfirm = reject;
+    });
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(200, previewResponse))
+      .mockImplementationOnce(() => pendingConfirm);
+    const { unmount } = renderWizard(fetchMock);
+
+    const file = new File(["conteudo"], "pedidos.csv", { type: "text/csv" });
+    fireEvent.change(screen.getByTestId("upload-file-input"), { target: { files: [file] } });
+    fireEvent.click(screen.getByTestId("upload-submit"));
+    await waitFor(() => expect(screen.getByTestId("mapping-confirm")).toBeTruthy());
+
+    fireEvent.click(screen.getByTestId("mapping-confirm"));
+    unmount();
+    rejectConfirm(jsonResponse(400, { error: "IMPORT_FAILED", message: "Falha ao confirmar." }));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+
+  it("voltar a coluna de prioridade para 'Nenhuma' limpa o mapeamento (transforma string vazia em undefined)", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, previewResponse));
+    renderWizard(fetchMock);
+
+    const file = new File(["conteudo"], "pedidos.csv", { type: "text/csv" });
+    fireEvent.change(screen.getByTestId("upload-file-input"), { target: { files: [file] } });
+    fireEvent.click(screen.getByTestId("upload-submit"));
+    await waitFor(() => expect(screen.getByTestId("mapping-priority")).toBeTruthy());
+
+    fireEvent.change(screen.getByTestId("mapping-priority"), { target: { value: "prioridade" } });
+    expect((screen.getByTestId("mapping-priority") as HTMLSelectElement).value).toBe("prioridade");
+
+    fireEvent.change(screen.getByTestId("mapping-priority"), { target: { value: "" } });
+    expect((screen.getByTestId("mapping-priority") as HTMLSelectElement).value).toBe("");
+  });
 });

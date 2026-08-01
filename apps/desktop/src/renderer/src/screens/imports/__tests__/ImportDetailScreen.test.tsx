@@ -59,13 +59,14 @@ function jsonResponseFor(url: string): Response {
   throw new Error(`unexpected url: ${url}`);
 }
 
-function renderScreen(fetchMock: typeof fetch) {
+function renderScreen(fetchMock: typeof fetch, initialEntry = "/imports/batch-1") {
   return render(
     <AuthProvider baseUrl="http://localhost:3000" fetchImpl={fetchMock} secureStore={secureStoreMock}>
-      <MemoryRouter initialEntries={["/imports/batch-1"]}>
+      <MemoryRouter initialEntries={[initialEntry]}>
         <Routes>
           <Route path="imports/new" element={<p>Assistente de nova importação</p>} />
           <Route path="imports/:batchId" element={<ImportDetailScreen />} />
+          <Route path="imports-sem-parametro" element={<ImportDetailScreen />} />
           <Route path="reconciliation" element={<p>Itens sem vínculo</p>} />
           <Route path="products/new" element={<p>Novo produto</p>} />
         </Routes>
@@ -75,6 +76,38 @@ function renderScreen(fetchMock: typeof fetch) {
 }
 
 describe("ImportDetailScreen", () => {
+  it("sem batchId na rota, não renderiza nada (guard defensivo) e não quebra", async () => {
+    const fetchMock = vi.fn().mockRejectedValue(new Error("não deveria chamar a API sem batchId"));
+    renderScreen(fetchMock, "/imports-sem-parametro");
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("card de item sem vínculo usa payload.name quando não há payload.nome", async () => {
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/admin/imports/batch-1")) return Promise.resolve(jsonResponse(200, readyBatch));
+      if (url.includes("/rows")) return Promise.resolve(jsonResponse(200, { items: [], total: 0, page: 1, pageSize: 20 }));
+      if (url.includes("/unlinked")) {
+        return Promise.resolve(
+          jsonResponse(200, {
+            items: [
+              { id: "item-4", externalRef: "ML-5", source: "mercado_livre", payload: { name: "Bolo Fake Azul" }, suggestions: [] },
+            ],
+            total: 1,
+            page: 1,
+            pageSize: 20,
+          })
+        );
+      }
+      throw new Error(`unexpected url: ${url}`);
+    });
+    renderScreen(fetchMock);
+
+    expect(await screen.findByText("Bolo Fake Azul")).toBeTruthy();
+  });
+
   it("mostra aviso de mapeamento pendente quando o lote ainda está processing", async () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, processingBatch));
     renderScreen(fetchMock);

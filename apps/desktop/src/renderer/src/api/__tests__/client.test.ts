@@ -305,4 +305,25 @@ describe("createApiClient", () => {
       message: "período muito longo",
     });
   });
+
+  it("requestBlob numa falha cujo corpo não é JSON válido usa mensagem e código padrão, sem lançar por causa do parse", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 500,
+      json: () => Promise.reject(new Error("corpo não é JSON")),
+    } as unknown as Response);
+    const client = createApiClient({
+      baseUrl: "http://localhost:3000",
+      fetchImpl: fetchMock,
+      getAccessToken: () => "token",
+      getRefreshToken: () => "refresh",
+      onTokensRefreshed: vi.fn(),
+      onAuthExpired: vi.fn(),
+    });
+
+    await expect(client.requestBlob("/admin/analytics/export")).rejects.toMatchObject({
+      code: "UNKNOWN_ERROR",
+      message: "Erro na requisição.",
+    });
+  });
 });

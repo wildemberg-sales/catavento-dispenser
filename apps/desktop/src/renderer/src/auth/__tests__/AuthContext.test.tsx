@@ -104,6 +104,39 @@ describe("AuthContext", () => {
     expect(secureStoreMock.set).not.toHaveBeenCalled();
   });
 
+  it("rejeita login de papel não-admin mesmo quando a revogação do token recém-emitido falha (rede indisponível)", async () => {
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/auth/login")) {
+        return Promise.resolve(
+          jsonResponse(200, {
+            accessToken: "access-1",
+            refreshToken: "refresh-1",
+            user: { id: "1", username: "operador1", role: "operator", displayName: "Operador 1" },
+          })
+        );
+      }
+      if (url.endsWith("/auth/logout")) {
+        return Promise.reject(new Error("rede indisponível"));
+      }
+      return Promise.reject(new Error(`url inesperada: ${url}`));
+    });
+
+    render(
+      <AuthProvider baseUrl="http://localhost:3000" fetchImpl={fetchMock} secureStore={secureStoreMock}>
+        <TestConsumer />
+      </AuthProvider>
+    );
+
+    await waitFor(() => expect(screen.getByTestId("loading").textContent).toBe("false"));
+    fireEvent.click(screen.getByTestId("login-btn"));
+
+    await waitFor(() =>
+      expect(screen.getByTestId("login-error").textContent).toBe("Esta aplicação é restrita a administradores.")
+    );
+    expect(screen.getByTestId("user").textContent).toBe("sem-usuario");
+  });
+
   it("restaura a sessão a partir do refresh token salvo, ao montar", async () => {
     secureStoreMock.get.mockResolvedValue("refresh-salvo");
     const fetchMock = vi.fn().mockResolvedValue(

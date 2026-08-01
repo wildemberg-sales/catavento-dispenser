@@ -42,6 +42,44 @@ describe("useMonitorStream", () => {
     unmount();
   });
 
+  it("ignora um frame com JSON malformado na linha data:, sem quebrar o parse dos eventos seguintes", async () => {
+    const frames =
+      'event: item_assigned\ndata: {json-invalido\n\n' +
+      'event: operator_online\ndata: {"operatorId":"op1"}\n\n';
+    const fetchImpl = vi.fn().mockResolvedValue(okResponse(streamFrom(frames)));
+    const onEvent = vi.fn();
+
+    const { unmount } = renderHook(() =>
+      useMonitorStream({ baseUrl: "http://localhost:3000", getAccessToken: () => "token-abc", onEvent, fetchImpl })
+    );
+
+    await waitFor(() => expect(onEvent).toHaveBeenCalledTimes(1));
+    expect(onEvent).toHaveBeenCalledWith({ type: "operator_online", payload: { operatorId: "op1" } });
+    unmount();
+  });
+
+  it("reconecta com backoff quando o handshake responde sem sucesso (response.ok=false)", async () => {
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: false, status: 401, body: null } as unknown as Response)
+      .mockResolvedValue(okResponse(streamFrom('event: queue_size_changed\ndata: {"queueSize":1}\n\n')));
+    const onEvent = vi.fn();
+
+    const { unmount } = renderHook(() =>
+      useMonitorStream({
+        baseUrl: "http://localhost:3000",
+        getAccessToken: () => "token-abc",
+        onEvent,
+        fetchImpl,
+        backoffMs: [0],
+      })
+    );
+
+    await waitFor(() => expect(onEvent).toHaveBeenCalledWith({ type: "queue_size_changed", payload: { queueSize: 1 } }));
+    expect(fetchImpl.mock.calls.length).toBeGreaterThanOrEqual(2);
+    unmount();
+  });
+
   it("envia o access token atual como header Authorization", async () => {
     const fetchImpl = vi.fn().mockResolvedValue(okResponse(streamFrom("")));
     const { unmount } = renderHook(() =>

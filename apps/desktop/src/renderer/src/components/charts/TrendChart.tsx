@@ -4,7 +4,10 @@ import { colors } from "../../theme/colors";
 import { formatDateTime } from "../../utils/formatDateTime";
 import { DateTimeAxisTick } from "./DateTimeAxisTick";
 
-function dateTimeLabelFormatter(value: React.ReactNode): React.ReactNode {
+// Exportado só pra teste direto — o Tooltip do recharts só chama isso de
+// verdade ao renderizar um hover real, o que exige layout/ResizeObserver que
+// o jsdom não tem, tornando esse caminho inatingível via simulação de DOM.
+export function dateTimeLabelFormatter(value: React.ReactNode): React.ReactNode {
   if (typeof value !== "string" && typeof value !== "number") return value;
   const { date, time } = formatDateTime(value);
   return `${date} ${time}`;

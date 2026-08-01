@@ -184,6 +184,44 @@ describe("ProblemsScreen", () => {
     });
   });
 
+  it("botão 'Anterior' fica desabilitado na primeira página, e habilitado (buscando page-1) depois de avançar", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse(200, { items: [problemItem()], total: 150, page: 1, pageSize: 100 })
+    );
+    renderScreen(fetchMock);
+
+    await screen.findByText("Bolo Fake Azul");
+    expect(screen.getByTestId("page-prev")).toBeDisabled();
+
+    fireEvent.click(screen.getByTestId("page-next"));
+    await waitFor(() => expect(screen.getByTestId("page-prev")).not.toBeDisabled());
+
+    fireEvent.click(screen.getByTestId("page-prev"));
+    await waitFor(() => {
+      const lastCall = fetchMock.mock.calls.at(-1)?.[0] as string;
+      expect(lastCall).toContain("page=1");
+    });
+  });
+
+  it("mostra erro inline quando resolver um item (repor/cancelar) falha", async () => {
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (init?.method === "POST" && url.endsWith(`/admin/queue/items/${problemItem().id}/requeue`)) {
+        return Promise.reject(new Error("falha ao repor"));
+      }
+      if (url.includes("/admin/queue/problems")) {
+        return Promise.resolve(jsonResponse(200, { items: [problemItem()], total: 1, page: 1, pageSize: 100 }));
+      }
+      return Promise.reject(new Error(`unexpected url: ${url}`));
+    });
+    renderScreen(fetchMock);
+
+    await screen.findByText("Bolo Fake Azul");
+    fireEvent.click(screen.getByTestId(`problem-requeue-${problemItem().id}`));
+
+    expect(await screen.findByText("Não foi possível atualizar o item.")).toBeTruthy();
+  });
+
   it("não mostra paginação quando o total cabe em uma página", async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       jsonResponse(200, { items: [problemItem()], total: 1, page: 1, pageSize: 100 })

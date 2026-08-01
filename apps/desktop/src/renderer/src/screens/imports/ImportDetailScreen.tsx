@@ -11,6 +11,13 @@ import { PageHeader } from "../../components/PageHeader";
 import { colors } from "../../theme/colors";
 import { typography } from "../../theme/typography";
 
+// A chave do "nome" no payload cru varia conforme o header da planilha de
+// origem ('nome' ou 'name') — usado tanto no título do card quanto no
+// prefill de cadastro de produto (handleRegisterProduct).
+function itemDisplayName(item: Pick<UnlinkedItem, "payload" | "externalRef">): string {
+  return (item.payload.nome as string | undefined) ?? (item.payload.name as string | undefined) ?? item.externalRef;
+}
+
 export function ImportDetailScreen() {
   const { batchId } = useParams<{ batchId: string }>();
   const { apiClient } = useAuth();
@@ -55,10 +62,9 @@ export function ImportDetailScreen() {
   }
 
   function handleRegisterProduct(item: UnlinkedItem) {
-    const name = (item.payload.nome as string | undefined) ?? (item.payload.name as string | undefined) ?? item.externalRef;
     navigate("/products/new", {
       state: {
-        prefillName: name,
+        prefillName: itemDisplayName(item),
         prefillSku: { source: item.source, sku: item.externalRef },
         fromQueueItemId: item.id,
       },
@@ -152,9 +158,7 @@ export function ImportDetailScreen() {
           <div style={styles.unlinkedList}>
             {unlinked.map((item) => (
               <Card key={item.id} style={styles.unlinkedCard}>
-                <p style={styles.unlinkedTitle}>
-                  {(item.payload.nome as string | undefined) ?? item.externalRef}
-                </p>
+                <p style={styles.unlinkedTitle}>{itemDisplayName(item)}</p>
                 <div style={styles.suggestionRow}>
                   {item.suggestions.map((suggestion) => (
                     <button

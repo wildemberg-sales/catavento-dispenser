@@ -1,7 +1,7 @@
 import React from "react";
 import { describe, expect, it } from "vitest";
 import { render } from "@testing-library/react";
-import { TrendChart } from "../TrendChart";
+import { TrendChart, dateTimeLabelFormatter } from "../TrendChart";
 
 const data = [
   { label: "2026-01-01", value: 3 },
@@ -41,5 +41,25 @@ describe("TrendChart", () => {
     expect(svg).toBeTruthy();
     const axisLine = container.querySelector(".recharts-cartesian-axis-line");
     expect(axisLine?.getAttribute("height")).toBe("44");
+  });
+});
+
+// O Tooltip do recharts só invoca esse formatter num hover real, que exige
+// layout/ResizeObserver ausentes no jsdom — testado direto como função pura.
+describe("dateTimeLabelFormatter", () => {
+  it("formata uma string ISO em 'data hora'", () => {
+    const result = dateTimeLabelFormatter("2026-03-05T09:07:03.000Z");
+    expect(typeof result).toBe("string");
+    expect(result).toMatch(/^\d{2}\/\d{2}\/\d{4} \d{2}:\d{2}:\d{2}$/);
+  });
+
+  it("formata um timestamp numérico", () => {
+    const result = dateTimeLabelFormatter(new Date("2026-03-05T09:07:03.000Z").getTime());
+    expect(typeof result).toBe("string");
+  });
+
+  it("retorna o valor sem alteração quando não é string nem number", () => {
+    expect(dateTimeLabelFormatter(null)).toBeNull();
+    expect(dateTimeLabelFormatter(undefined)).toBeUndefined();
   });
 });

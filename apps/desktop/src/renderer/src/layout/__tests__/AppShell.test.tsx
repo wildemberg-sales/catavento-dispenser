@@ -170,5 +170,26 @@ describe("AppShell", () => {
 
       expect(screen.getByTestId("problems-badge")).toHaveTextContent("5");
     });
+
+    it("desmontar antes da checagem resolver não atualiza estado (sem warning de setState pós-desmonte)", async () => {
+      let resolveProblems!: (value: Response) => void;
+      const fetchMock = vi.fn(
+        () =>
+          new Promise<Response>((resolve) => {
+            resolveProblems = resolve;
+          })
+      );
+      const { unmount } = renderShell(fetchMock);
+
+      await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+      unmount();
+
+      // resolve só depois do unmount — se o guard `cancelled` não existisse,
+      // isso chamaria setState num componente já desmontado.
+      resolveProblems(jsonResponse(200, { items: [], total: 4, page: 1, pageSize: 1 }));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(screen.queryByTestId("problems-badge")).toBeNull();
+    });
   });
 });

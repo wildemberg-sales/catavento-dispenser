@@ -435,4 +435,103 @@ describe("ReportsScreen", () => {
       expect(lastCall).toContain("bucket=day");
     });
   });
+
+  it("mostra e some as sugestões de operador ao focar/desfocar o campo de busca", async () => {
+    renderScreen(buildFetchMock());
+    await screen.findByText("Fulano");
+
+    fireEvent.click(screen.getByTestId("tab-operator-report"));
+    const search = await screen.findByTestId("operator-search");
+
+    fireEvent.focus(search);
+    expect(await screen.findByTestId("operator-suggestions")).toBeTruthy();
+
+    fireEvent.blur(search);
+    expect(screen.queryByTestId("operator-suggestions")).toBeNull();
+  });
+
+  it("mousedown numa sugestão não perde o foco do campo antes do clique (preventDefault)", async () => {
+    renderScreen(buildFetchMock());
+    await screen.findByText("Fulano");
+
+    fireEvent.click(screen.getByTestId("tab-operator-report"));
+    const search = await screen.findByTestId("operator-search");
+    fireEvent.focus(search);
+
+    const suggestion = await screen.findByTestId("operator-suggestion-op-1");
+    const event = new MouseEvent("mousedown", { bubbles: true, cancelable: true });
+    const prevented = !suggestion.dispatchEvent(event);
+    expect(prevented).toBe(true);
+  });
+
+  it("aba 'Por operador' e 'Por produto': clicar em 'Anterior' na paginação busca a página anterior", async () => {
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/admin/analytics/by-operator")) {
+        return Promise.resolve(jsonResponse(200, { items: [operatorRow], total: 45, page: 1, pageSize: 20 }));
+      }
+      return Promise.reject(new Error(`unexpected url: ${url}`));
+    });
+    renderScreen(fetchMock);
+    await screen.findByText("Fulano");
+
+    fireEvent.click(screen.getByTestId("operator-page-next"));
+    await waitFor(() => expect(fetchMock.mock.calls.at(-1)?.[0]).toContain("page=2"));
+
+    fireEvent.click(screen.getByTestId("operator-page-prev"));
+    await waitFor(() => expect(fetchMock.mock.calls.at(-1)?.[0]).toContain("page=1"));
+  });
+
+  it("relatório individual: itens com campos nulos mostram os fallbacks (sem produto, em andamento, sem conclusão, sem duração, sem observação)", async () => {
+    const itemWithNulls = {
+      workLogId: "wl-2",
+      queueItemId: "item-2",
+      productName: null,
+      outcome: null,
+      startedAt: "2026-01-02T10:00:00.000Z",
+      completedAt: null,
+      durationSeconds: null,
+      problemNote: null,
+    };
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/admin/reports/operator/op-1/items")) {
+        return Promise.resolve(jsonResponse(200, { items: [itemWithNulls], total: 1, page: 1, pageSize: 20 }));
+      }
+      if (url.includes("/admin/reports/operator/op-1")) {
+        return Promise.resolve(jsonResponse(200, operatorReport));
+      }
+      if (url.includes("/admin/analytics/by-operator")) {
+        return Promise.resolve(jsonResponse(200, { items: [operatorRow], total: 1, page: 1, pageSize: 20 }));
+      }
+      if (url.includes("/admin/users")) {
+        return Promise.resolve(
+          jsonResponse(200, {
+            items: [{ id: "op-1", username: "op1", role: "operator", displayName: "Fulano", isActive: true, createdAt: new Date().toISOString() }],
+            total: 1,
+            page: 1,
+            pageSize: 100,
+          })
+        );
+      }
+      return Promise.reject(new Error(`unexpected url: ${url}`));
+    });
+    renderScreen(fetchMock);
+    await screen.findByText("Fulano");
+
+    fireEvent.click(screen.getByTestId("tab-operator-report"));
+    fireEvent.change(await screen.findByTestId("operator-search"), { target: { value: "Fulano" } });
+    fireEvent.click(await screen.findByTestId("operator-suggestion-op-1"));
+
+    expect(await screen.findByText("(sem produto)")).toBeTruthy();
+    expect(screen.getByText("Em andamento")).toBeTruthy();
+    expect(screen.getAllByText("-").length).toBeGreaterThanOrEqual(3);
+  });
+
+  it("carregar o relatório falha por um motivo que não é erro de domínio — mostra mensagem padrão", async () => {
+    const fetchMock = vi.fn().mockRejectedValue(new Error("falha de rede"));
+    renderScreen(fetchMock);
+
+    expect(await screen.findByText("Não foi possível carregar o relatório.")).toBeTruthy();
+  });
 });
