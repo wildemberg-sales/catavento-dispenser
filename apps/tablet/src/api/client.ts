@@ -92,9 +92,15 @@ export function createApiClient(config: ApiClientConfig) {
         }
       }
 
-      const data = await response.json();
+      // 204 (ex.: heartbeat, logout) nunca tem corpo — chamar .json()
+      // incondicionalmente lançaria um erro de parse numa resposta de
+      // sucesso. O heartbeat (POST /queue/heartbeat, chamado a cada 60s
+      // enquanto logado) sempre bateu nisso silenciosamente: o erro de
+      // parse era engolido pelo mesmo catch genérico que trata falha de
+      // rede, então nunca apareceu como um bug visível.
+      const data = response.status === 204 ? undefined : await response.json();
       if (!response.ok) {
-        throw new ApiClientError(data.message ?? "Erro na requisição.", data.error ?? "UNKNOWN_ERROR", response.status);
+        throw new ApiClientError(data?.message ?? "Erro na requisição.", data?.error ?? "UNKNOWN_ERROR", response.status);
       }
       return data as T;
     },

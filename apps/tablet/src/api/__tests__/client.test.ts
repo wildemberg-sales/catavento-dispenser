@@ -177,4 +177,28 @@ describe("createApiClient", () => {
     });
     expect(onAuthExpired).toHaveBeenCalledTimes(1);
   });
+
+  it("resolve sem erro numa resposta 204 sem corpo (ex.: heartbeat) — não chama .json()", async () => {
+    // Uma resposta 204 real não tem corpo — chamar .json() nela lança um
+    // erro de parse ("Unexpected end of JSON input"). O heartbeat
+    // (POST /queue/heartbeat, chamado a cada 60s enquanto logado) batia
+    // nisso a cada chamada, e o erro era silenciosamente engolido pelo
+    // catch genérico de falha de rede em AuthContext, nunca aparecendo
+    // como bug visível.
+    const jsonSpy = jest.fn().mockRejectedValue(new Error("Unexpected end of JSON input"));
+    const fetchMock = jest.fn().mockResolvedValue({ ok: true, status: 204, json: jsonSpy } as unknown as Response);
+    const client = createApiClient({
+      baseUrl: "http://10.0.2.2:3000",
+      fetchImpl: fetchMock,
+      getAccessToken: () => "token",
+      getRefreshToken: () => "refresh",
+      onTokensRefreshed: jest.fn(),
+      onAuthExpired: jest.fn(),
+    });
+
+    const result = await client.request("/queue/heartbeat", { method: "POST" });
+
+    expect(result).toBeUndefined();
+    expect(jsonSpy).not.toHaveBeenCalled();
+  });
 });
