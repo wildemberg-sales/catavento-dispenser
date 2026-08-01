@@ -30,7 +30,7 @@ export async function buildApp(opts: {
   const app = fastify({ logger: buildLoggerOptions(opts.config) });
 
   await app.register(sensiblePlugin);
-  await app.register(corsPlugin);
+  await app.register(corsPlugin, { config: opts.config });
   await app.register(jwtPlugin, { config: opts.config });
   await app.register(dbPlugin, { db: opts.db });
   await app.register(configPlugin, { config: opts.config });

@@ -32,6 +32,11 @@ const envSchema = z.object({
   // credential stuffing eram possíveis sem fricção nenhuma. Limite por IP.
   AUTH_RATE_LIMIT_MAX: z.coerce.number().int().positive().default(10),
   AUTH_RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive().default(60000),
+  // Lista separada por vírgulas (ex.: "https://admin.exemplo.com,https://outra.com").
+  // Vazio (default) mantém o comportamento de refletir qualquer origem —
+  // aceitável pra uma ferramenta interna, mas deve ser restringido antes de
+  // expor a API fora da rede local.
+  CORS_ALLOWED_ORIGINS: z.string().default(""),
 });
 
 export type Config = z.infer<typeof envSchema>;

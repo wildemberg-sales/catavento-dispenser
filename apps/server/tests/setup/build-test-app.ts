@@ -28,6 +28,7 @@ export function buildTestConfig(overrides?: Partial<Config>): Config {
     // exercitar o rate limit de verdade sobrescrevem este valor.
     AUTH_RATE_LIMIT_MAX: 1000,
     AUTH_RATE_LIMIT_WINDOW_MS: 60000,
+    CORS_ALLOWED_ORIGINS: "",
     ...overrides,
   };
 }

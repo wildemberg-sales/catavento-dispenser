@@ -2,6 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { requireAuth, requireRole } from "../auth/rbac.js";
 import { monitorBus } from "../../lib/monitor-bus.js";
 import { onlineOperatorsStore } from "./online-operators.store.js";
+import { parseAllowedOrigins, resolveCorsOrigin } from "../../lib/cors-origins.js";
 
 const HEARTBEAT_INTERVAL_MS = 25000;
 
@@ -32,14 +33,18 @@ export default async function monitorRoutes(app: FastifyInstance) {
       // caso do renderer do Electron em modo dev, servido pelo Vite em
       // http://localhost:5173 batendo em http://localhost:3000 — o fetch()
       // falha com "blocked by CORS policy" e o cliente entra num loop de
-      // reconexão que nunca se estabiliza.
+      // reconexão que nunca se estabiliza. Usa a mesma allowlist do plugin
+      // de CORS principal (CORS_ALLOWED_ORIGINS) — sem isso, essa rota
+      // continuaria refletindo qualquer origem mesmo depois de restringir
+      // o resto da API.
       const headers: Record<string, string> = {
         "Content-Type": "text/event-stream",
         "Cache-Control": "no-cache",
         Connection: "keep-alive",
       };
-      if (req.headers.origin) {
-        headers["Access-Control-Allow-Origin"] = req.headers.origin;
+      const allowedOrigin = resolveCorsOrigin(req.headers.origin, parseAllowedOrigins(app.config.CORS_ALLOWED_ORIGINS));
+      if (allowedOrigin) {
+        headers["Access-Control-Allow-Origin"] = allowedOrigin;
         headers.Vary = "Origin";
       }
       reply.raw.writeHead(200, headers);

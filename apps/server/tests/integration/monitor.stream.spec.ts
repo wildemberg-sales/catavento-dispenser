@@ -95,6 +95,34 @@ describe("GET /admin/stream (SSE)", () => {
     await app.close();
   });
 
+  it("com CORS_ALLOWED_ORIGINS configurada, não ecoa uma origem fora da allowlist no /admin/stream", async () => {
+    await createUser(ctx.db, { username: "admin-cors-restrito", role: "admin" });
+    const app = await buildTestApp(ctx.db, { CORS_ALLOWED_ORIGINS: "https://admin.exemplo.com" });
+    const token = await loginAs(app, "admin-cors-restrito");
+    await app.listen({ port: 0, host: "127.0.0.1" });
+    const address = app.server.address();
+    const port = typeof address === "object" && address ? address.port : 0;
+
+    const responseHeaders = await new Promise<Record<string, string | string[] | undefined>>((resolve, reject) => {
+      const req = http.get(
+        {
+          host: "127.0.0.1",
+          port,
+          path: "/admin/stream",
+          headers: { authorization: `Bearer ${token}`, origin: "http://origem-nao-autorizada.com" },
+        },
+        (res) => {
+          resolve(res.headers);
+          res.destroy();
+        }
+      );
+      req.on("error", reject);
+    });
+
+    expect(responseHeaders["access-control-allow-origin"]).toBeUndefined();
+    await app.close();
+  });
+
   it("retorna 401 sem token, antes de fazer upgrade para stream", async () => {
     const app = await buildTestApp(ctx.db);
     const response = await app.inject({ method: "GET", url: "/admin/stream" });
