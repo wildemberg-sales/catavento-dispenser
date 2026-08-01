@@ -3,8 +3,10 @@ import type {
   AdminQueueQuery,
   UpdatePriorityRulesInput,
   PriorityRulesResponse,
+  ProblemQueueItem,
 } from "@catavento/contracts/queue";
 import type { LinkQueueItemInput } from "@catavento/contracts/products";
+import type { PaginationQuery } from "@catavento/contracts/common";
 import type { ApiClient } from "./client";
 import { buildQueryString } from "./queryString";
 
@@ -30,6 +32,10 @@ export function createAdminQueueApi(client: ApiClient) {
 
     getPriorityRules(): Promise<PriorityRulesResponse> {
       return client.request("/admin/queue/rules");
+    },
+
+    problems(params: Partial<PaginationQuery> = {}): Promise<Paginated<ProblemQueueItem>> {
+      return client.request(`/admin/queue/problems${buildQueryString(params)}`);
     },
 
     setPriorityRules(input: UpdatePriorityRulesInput): Promise<PriorityRulesResponse> {

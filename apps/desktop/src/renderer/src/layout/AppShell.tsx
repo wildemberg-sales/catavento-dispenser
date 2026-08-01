@@ -1,9 +1,17 @@
-import React from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { NavLink, Outlet } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
+import { createAdminQueueApi } from "../api/adminQueue.api";
 import { Button } from "../components/Button";
 import { colors } from "../theme/colors";
 import { typography } from "../theme/typography";
+
+// Verificação contínua (Tarefa anterior tentou via toast; substituída por um
+// contador no menu a pedido do usuário) — a cada 10s busca só o total de
+// itens com problema (pageSize: 1, não precisa da lista inteira) e mostra
+// como badge ao lado do link "Problemas", sem depender do SSE/stream (mais
+// simples e não sofre do mesmo problema de instabilidade de conexão em dev).
+const PROBLEMS_POLL_INTERVAL_MS = 10000;
 
 const navItems = [
   { to: "/imports", label: "Importações", icon: "📥" },
@@ -11,13 +19,37 @@ const navItems = [
   { to: "/products", label: "Produtos", icon: "🧁" },
   { to: "/reconciliation", label: "Sem vínculo", icon: "🔗" },
   { to: "/monitor", label: "Monitor", icon: "📡" },
+  { to: "/problems", label: "Problemas", icon: "🚨" },
   { to: "/reports", label: "Relatórios", icon: "📊" },
   { to: "/users", label: "Usuários", icon: "👤" },
 ];
 
 export function AppShell() {
-  const { user, logout } = useAuth();
+  const { user, logout, apiClient } = useAuth();
+  const adminQueueApi = useMemo(() => createAdminQueueApi(apiClient), [apiClient]);
   const initial = user?.displayName?.trim().charAt(0).toUpperCase() ?? "?";
+  const [problemCount, setProblemCount] = useState(0);
+
+  useEffect(() => {
+    let cancelled = false;
+    function checkProblems() {
+      adminQueueApi
+        .problems({ pageSize: 1 })
+        .then((result) => {
+          if (!cancelled) setProblemCount(result.total);
+        })
+        .catch(() => {
+          // Falha pontual (rede, etc.) não deve derrubar o badge — mantém o
+          // último valor conhecido até a próxima checagem em 10s.
+        });
+    }
+    checkProblems();
+    const interval = setInterval(checkProblems, PROBLEMS_POLL_INTERVAL_MS);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [adminQueueApi]);
 
   return (
     <div style={styles.container}>
@@ -37,6 +69,11 @@ export function AppShell() {
             >
               <span aria-hidden="true">{item.icon}</span>
               <span className="app-shell-label">{item.label}</span>
+              {item.to === "/problems" && problemCount > 0 ? (
+                <span style={styles.navBadge} data-testid="problems-badge">
+                  {problemCount}
+                </span>
+              ) : null}
             </NavLink>
           ))}
         </div>
@@ -113,6 +150,20 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 17,
   },
   navGroup: { display: "flex", flexDirection: "column", gap: 4 },
+  navBadge: {
+    ...typography.small,
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    minWidth: 18,
+    height: 18,
+    padding: "0 5px",
+    borderRadius: 9,
+    backgroundColor: colors.danger,
+    color: colors.textOnDark,
+    fontWeight: 700,
+    marginLeft: "auto",
+  },
   spacer: {
     flex: 1,
   },

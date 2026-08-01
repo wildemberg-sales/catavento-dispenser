@@ -10,6 +10,7 @@ import { ProductsListScreen } from "./screens/products/ProductsListScreen";
 import { ProductForm } from "./screens/products/ProductForm";
 import { ReconciliationScreen } from "./screens/reconciliation/ReconciliationScreen";
 import { MonitorScreen } from "./screens/monitor/MonitorScreen";
+import { ProblemsScreen } from "./screens/problems/ProblemsScreen";
 import { ReportsScreen } from "./screens/reports/ReportsScreen";
 import { UsersListScreen } from "./screens/users/UsersListScreen";
 import { UserForm } from "./screens/users/UserForm";
@@ -54,6 +55,7 @@ function RootRoutes() {
         <Route path="products/:productId/edit" element={<ProductForm />} />
         <Route path="reconciliation" element={<ReconciliationScreen />} />
         <Route path="monitor" element={<MonitorScreen />} />
+        <Route path="problems" element={<ProblemsScreen />} />
         <Route path="reports" element={<ReportsScreen />} />
         <Route path="users" element={<UsersListScreen />} />
         <Route path="users/new" element={<UserForm />} />

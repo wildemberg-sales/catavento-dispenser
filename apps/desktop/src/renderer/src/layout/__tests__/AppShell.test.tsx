@@ -1,9 +1,13 @@
 import React from "react";
-import { describe, expect, it, vi } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { describe, expect, it, vi, afterEach } from "vitest";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { MemoryRouter, Routes, Route } from "react-router-dom";
 import { AppShell } from "../AppShell";
 import { AuthProvider } from "../../auth/AuthContext";
+
+function jsonResponse(status: number, body: unknown): Response {
+  return { ok: status >= 200 && status < 300, status, json: async () => body } as Response;
+}
 
 const secureStoreMock = {
   get: vi.fn().mockResolvedValue(null),
@@ -22,6 +26,7 @@ function renderShell(fetchMock: typeof fetch, initialEntry = "/imports") {
             <Route path="products" element={<div>Conteúdo de produtos</div>} />
             <Route path="reconciliation" element={<div>Conteúdo de reconciliação</div>} />
             <Route path="monitor" element={<div>Conteúdo do monitor</div>} />
+            <Route path="problems" element={<div>Conteúdo de problemas</div>} />
             <Route path="reports" element={<div>Conteúdo de relatórios</div>} />
             <Route path="users" element={<div>Conteúdo de usuários</div>} />
           </Route>
@@ -68,6 +73,13 @@ describe("AppShell", () => {
     expect(screen.getByText("Conteúdo do monitor")).toBeTruthy();
   });
 
+  it("mostra o link de Problemas e navega pra ele", () => {
+    renderShell(vi.fn());
+
+    fireEvent.click(screen.getByText("Problemas"));
+    expect(screen.getByText("Conteúdo de problemas")).toBeTruthy();
+  });
+
   it("mostra o link de Relatórios e navega pra ele", () => {
     renderShell(vi.fn());
 
@@ -89,5 +101,74 @@ describe("AppShell", () => {
     fireEvent.click(screen.getByTestId("logout-btn"));
 
     expect(secureStoreMock.delete).toBeDefined();
+  });
+
+  describe("badge de problemas", () => {
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it("mostra a contagem de itens com problema ao lado do link, buscando com pageSize=1", async () => {
+      const fetchMock = vi.fn((input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.includes("/admin/queue/problems")) {
+          return Promise.resolve(jsonResponse(200, { items: [], total: 3, page: 1, pageSize: 1 }));
+        }
+        return Promise.reject(new Error(`unexpected url: ${url}`));
+      });
+      renderShell(fetchMock);
+
+      expect(await screen.findByTestId("problems-badge")).toHaveTextContent("3");
+      expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining("pageSize=1"), expect.anything());
+    });
+
+    it("não mostra o badge quando não há itens com problema", async () => {
+      const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { items: [], total: 0, page: 1, pageSize: 1 }));
+      renderShell(fetchMock);
+
+      await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+      expect(screen.queryByTestId("problems-badge")).toBeNull();
+    });
+
+    it("verifica de novo a cada 10 segundos e atualiza o badge", async () => {
+      vi.useFakeTimers();
+      let total = 0;
+      const fetchMock = vi.fn((input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.includes("/admin/queue/problems")) {
+          return Promise.resolve(jsonResponse(200, { items: [], total, page: 1, pageSize: 1 }));
+        }
+        return Promise.reject(new Error(`unexpected url: ${url}`));
+      });
+      renderShell(fetchMock);
+
+      await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+      expect(screen.queryByTestId("problems-badge")).toBeNull();
+
+      total = 2;
+      await vi.advanceTimersByTimeAsync(10000);
+      await vi.waitFor(() => expect(screen.getByTestId("problems-badge")).toHaveTextContent("2"));
+    });
+
+    it("uma falha pontual na checagem não derruba o badge — mantém o último valor conhecido", async () => {
+      let shouldFail = false;
+      const fetchMock = vi.fn((input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.includes("/admin/queue/problems")) {
+          if (shouldFail) return Promise.reject(new Error("falha de rede"));
+          return Promise.resolve(jsonResponse(200, { items: [], total: 5, page: 1, pageSize: 1 }));
+        }
+        return Promise.reject(new Error(`unexpected url: ${url}`));
+      });
+      renderShell(fetchMock);
+
+      expect(await screen.findByTestId("problems-badge")).toHaveTextContent("5");
+
+      shouldFail = true;
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      await vi.advanceTimersByTimeAsync(10000);
+
+      expect(screen.getByTestId("problems-badge")).toHaveTextContent("5");
+    });
   });
 });

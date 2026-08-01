@@ -23,11 +23,26 @@ export default async function monitorRoutes(app: FastifyInstance) {
     { preHandler: [requireAuth(app), requireRole("admin")] },
     async (req, reply) => {
       reply.hijack();
-      reply.raw.writeHead(200, {
+      // reply.hijack() tira o Fastify do controle da resposta — o header de
+      // CORS que o plugin normalmente injeta via onSend (Access-Control-
+      // Allow-Origin) nunca chega a ser escrito aqui, então precisa ser
+      // replicado manualmente. Sem isso, o navegador aceita o preflight
+      // (OPTIONS, que não passa por essa rota) mas rejeita a resposta real
+      // sempre que a origem do app não é idêntica à da API — é exatamente o
+      // caso do renderer do Electron em modo dev, servido pelo Vite em
+      // http://localhost:5173 batendo em http://localhost:3000 — o fetch()
+      // falha com "blocked by CORS policy" e o cliente entra num loop de
+      // reconexão que nunca se estabiliza.
+      const headers: Record<string, string> = {
         "Content-Type": "text/event-stream",
         "Cache-Control": "no-cache",
         Connection: "keep-alive",
-      });
+      };
+      if (req.headers.origin) {
+        headers["Access-Control-Allow-Origin"] = req.headers.origin;
+        headers.Vary = "Origin";
+      }
+      reply.raw.writeHead(200, headers);
       reply.raw.write(": connected\n\n");
 
       const unsubscribe = monitorBus.subscribe((event) => {

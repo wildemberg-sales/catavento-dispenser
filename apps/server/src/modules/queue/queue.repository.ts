@@ -14,6 +14,20 @@ export type QueueItemRow = {
   createdAt: Date;
 };
 
+export type ProblemItemRow = {
+  id: string;
+  externalRef: string;
+  source: QueueItemRow["source"];
+  payload: Record<string, unknown>;
+  batchId: string;
+  createdAt: Date;
+  productName: string | null;
+  problemNote: string | null;
+  reportedAt: Date;
+  operatorId: string;
+  operatorDisplayName: string;
+};
+
 function mapQueueItemRow(row: Record<string, unknown>): QueueItemRow {
   return {
     id: row.id as string,
@@ -275,6 +289,61 @@ export function queueRepository(db: DbInstance) {
       );
 
       return { items, total: Number(totalRows[0]!.total) };
+    },
+
+    // Aba dedicada de "Problemas" (Reports) — antes o único jeito de ver um
+    // item com problema era filtrar por status na Fila de produção, e nem
+    // ali dava pra ver a nota que o operador escreveu (problem_note vive em
+    // work_logs, não em queue_items). DISTINCT ON pega o work_log 'problem'
+    // mais recente por item — cobre o caso de um item já ter sido reposto e
+    // reportado com problema mais de uma vez ao longo do tempo.
+    async findProblems(pagination: { page: number; pageSize: number }): Promise<{ items: ProblemItemRow[]; total: number }> {
+      const countResult = await db.execute(sql`
+        SELECT COUNT(*) AS total FROM queue_items WHERE status = 'problem'
+      `);
+      const total = Number((countResult.rows[0] as Record<string, unknown>)?.total ?? 0);
+
+      const offset = (pagination.page - 1) * pagination.pageSize;
+      const result = await db.execute(sql`
+        SELECT * FROM (
+          SELECT DISTINCT ON (qi.id)
+            qi.id AS id,
+            qi.external_ref AS external_ref,
+            qi.source AS source,
+            qi.payload AS payload,
+            qi.batch_id AS batch_id,
+            qi.created_at AS created_at,
+            p.name AS product_name,
+            wl.problem_note AS problem_note,
+            wl.completed_at AS reported_at,
+            wl.operator_id AS operator_id,
+            u.display_name AS operator_display_name
+          FROM queue_items qi
+          LEFT JOIN products p ON p.id = qi.product_id
+          JOIN work_logs wl ON wl.queue_item_id = qi.id AND wl.outcome = 'problem'
+          JOIN users u ON u.id = wl.operator_id
+          WHERE qi.status = 'problem'
+          ORDER BY qi.id, wl.completed_at DESC
+        ) reported
+        ORDER BY reported_at DESC
+        LIMIT ${pagination.pageSize} OFFSET ${offset}
+      `);
+
+      const items = (result.rows as Array<Record<string, unknown>>).map((row) => ({
+        id: row.id as string,
+        externalRef: row.external_ref as string,
+        source: row.source as QueueItemRow["source"],
+        payload: row.payload as Record<string, unknown>,
+        batchId: row.batch_id as string,
+        createdAt: new Date(row.created_at as string | Date),
+        productName: row.product_name === null ? null : (row.product_name as string),
+        problemNote: row.problem_note === null ? null : (row.problem_note as string),
+        reportedAt: new Date(row.reported_at as string | Date),
+        operatorId: row.operator_id as string,
+        operatorDisplayName: row.operator_display_name as string,
+      }));
+
+      return { items, total };
     },
 
     async adminRequeue(queueItemId: string) {

@@ -77,6 +77,25 @@ export type UpdatePriorityRulesInput = z.infer<typeof updatePriorityRulesInputSc
 export const priorityRulesResponseSchema = z.object({ rules: z.array(priorityRuleSchema) });
 export type PriorityRulesResponse = z.infer<typeof priorityRulesResponseSchema>;
 
+// Aba dedicada de "Problemas" no relatório — item ainda com status
+// 'problem' na fila, junto da nota que o operador escreveu ao reportar e de
+// quem reportou. `productName` é nulo quando o item nunca foi vinculado a
+// um produto do catálogo (mesmo caso de `payload` cru usado em outros lugares).
+export const problemQueueItemSchema = z.object({
+  id: z.string().uuid(),
+  externalRef: z.string(),
+  source: sourceTypeSchema,
+  payload: z.record(z.string(), z.unknown()),
+  batchId: z.string().uuid(),
+  createdAt: z.string().datetime(),
+  productName: z.string().nullable(),
+  problemNote: z.string().nullable(),
+  reportedAt: z.string().datetime(),
+  operatorId: z.string().uuid(),
+  operatorDisplayName: z.string(),
+});
+export type ProblemQueueItem = z.infer<typeof problemQueueItemSchema>;
+
 export const adminQueueQuerySchema = z
   .object({
     status: queueItemStatusSchema.optional(),

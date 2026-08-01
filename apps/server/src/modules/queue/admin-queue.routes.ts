@@ -62,6 +62,25 @@ export default async function adminQueueRoutes(app: FastifyInstance) {
   );
 
   app.get(
+    "/problems",
+    { preHandler: [requireAuth(app), requireRole("admin")] },
+    async (req, reply) => {
+      const pagination = paginationQuerySchema.parse(req.query);
+      const { items, total } = await repo.findProblems(pagination);
+      return reply.status(200).send({
+        items: items.map((item) => ({
+          ...item,
+          createdAt: item.createdAt.toISOString(),
+          reportedAt: item.reportedAt.toISOString(),
+        })),
+        total,
+        page: pagination.page,
+        pageSize: pagination.pageSize,
+      });
+    }
+  );
+
+  app.get(
     "/unlinked",
     { preHandler: [requireAuth(app), requireRole("admin")] },
     async (req, reply) => {
