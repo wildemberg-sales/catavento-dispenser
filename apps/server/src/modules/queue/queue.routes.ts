@@ -5,10 +5,25 @@ import { queueRepository } from "./queue.repository.js";
 import { queueService } from "./queue.service.js";
 import { withMonitorEvents } from "../monitor/instrumented-queue-service.js";
 import { monitorBus } from "../../lib/monitor-bus.js";
+import { onlineOperatorsStore } from "../monitor/online-operators.store.js";
 
 export default async function queueRoutes(app: FastifyInstance) {
   const repo = queueRepository(app.db);
   const service = withMonitorEvents(queueService({ repo }), monitorBus, repo);
+
+  // Heartbeat (Seção 9.1): o app do operador chama isso periodicamente
+  // enquanto logado — sem ele, "online" só teria como sair do ar via logout
+  // explícito, e um operador cujo app trava/perde rede ficaria online pra
+  // sempre no Monitor (ver online-operators-sweep.job.ts, que derruba quem
+  // parar de mandar heartbeat).
+  app.post(
+    "/heartbeat",
+    { preHandler: [requireAuth(app), requireRole("operator")] },
+    async (req, reply) => {
+      onlineOperatorsStore.touch(req.authUser!.id, req.authUser!.displayName);
+      return reply.status(204).send();
+    }
+  );
 
   app.post(
     "/next",

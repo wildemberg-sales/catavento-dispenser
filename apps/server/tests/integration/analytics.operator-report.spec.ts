@@ -221,3 +221,147 @@ describe("GET /admin/reports/operator/:id", () => {
     await app.close();
   });
 });
+
+describe("GET /admin/reports/operator/:id/items", () => {
+  let ctx: TestDbContext;
+
+  beforeAll(async () => {
+    ctx = await startTestDb();
+  }, 60000);
+
+  afterAll(async () => {
+    await stopTestDb(ctx);
+  });
+
+  beforeEach(async () => {
+    await truncateAll(ctx.db);
+  });
+
+  async function loginAs(app: Awaited<ReturnType<typeof buildTestApp>>, username: string) {
+    const response = await app.inject({
+      method: "POST",
+      url: "/auth/login",
+      payload: { username, password: "senha-de-teste-123" },
+    });
+    return response.json().accessToken as string;
+  }
+
+  function period() {
+    return `from=${encodeURIComponent(FROM.toISOString())}&to=${encodeURIComponent(TO.toISOString())}`;
+  }
+
+  it("retorna os itens do operador com o problemNote, antes invisível no relatório agregado", async () => {
+    await createUser(ctx.db, { username: "admin-items", role: "admin" });
+    const operator = await createUser(ctx.db, { username: "op-items", role: "operator" });
+    const product = await createProduct(ctx.db, { name: "Produto com Problema" });
+    const batch = await createImportBatch(ctx.db);
+    const item = await createQueueItem(ctx.db, { batchId: batch.id, productId: product.id });
+
+    await createWorkLog(ctx.db, {
+      queueItemId: item.id,
+      operatorId: operator.id,
+      startedAt: FROM,
+      completedAt: new Date(FROM.getTime() + 1000),
+      outcome: "problem",
+      problemNote: "Foto do produto não bate com o pedido",
+    });
+
+    const app = await buildTestApp(ctx.db);
+    const token = await loginAs(app, "admin-items");
+
+    const response = await app.inject({
+      method: "GET",
+      url: `/admin/reports/operator/${operator.id}/items?${period()}`,
+      headers: { authorization: `Bearer ${token}` },
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = response.json();
+    expect(body.total).toBe(1);
+    expect(body.items[0].queueItemId).toBe(item.id);
+    expect(body.items[0].productName).toBe("Produto com Problema");
+    expect(body.items[0].outcome).toBe("problem");
+    expect(body.items[0].problemNote).toBe("Foto do produto não bate com o pedido");
+    await app.close();
+  });
+
+  it("respeita paginação (page/pageSize)", async () => {
+    await createUser(ctx.db, { username: "admin-items-page", role: "admin" });
+    const operator = await createUser(ctx.db, { username: "op-items-page", role: "operator" });
+    const batch = await createImportBatch(ctx.db);
+    for (let i = 0; i < 3; i++) {
+      const item = await createQueueItem(ctx.db, { batchId: batch.id });
+      await createCompletedWorkLog(ctx.db, {
+        queueItemId: item.id,
+        operatorId: operator.id,
+        startedAt: new Date(FROM.getTime() + i * 60000),
+        durationSeconds: 10,
+      });
+    }
+
+    const app = await buildTestApp(ctx.db);
+    const token = await loginAs(app, "admin-items-page");
+
+    const response = await app.inject({
+      method: "GET",
+      url: `/admin/reports/operator/${operator.id}/items?${period()}&page=1&pageSize=2`,
+      headers: { authorization: `Bearer ${token}` },
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = response.json();
+    expect(body.total).toBe(3);
+    expect(body.items).toHaveLength(2);
+    expect(body.page).toBe(1);
+    expect(body.pageSize).toBe(2);
+    await app.close();
+  });
+
+  it("item sem vínculo de produto retorna productName: null", async () => {
+    await createUser(ctx.db, { username: "admin-items-sem-produto", role: "admin" });
+    const operator = await createUser(ctx.db, { username: "op-items-sem-produto", role: "operator" });
+    const batch = await createImportBatch(ctx.db);
+    const item = await createQueueItem(ctx.db, { batchId: batch.id, productId: null });
+    await createCompletedWorkLog(ctx.db, { queueItemId: item.id, operatorId: operator.id, startedAt: FROM, durationSeconds: 10 });
+
+    const app = await buildTestApp(ctx.db);
+    const token = await loginAs(app, "admin-items-sem-produto");
+
+    const response = await app.inject({
+      method: "GET",
+      url: `/admin/reports/operator/${operator.id}/items?${period()}`,
+      headers: { authorization: `Bearer ${token}` },
+    });
+
+    expect(response.json().items[0].productName).toBeNull();
+    await app.close();
+  });
+
+  it("retorna 404 para operador inexistente", async () => {
+    await createUser(ctx.db, { username: "admin-items-404", role: "admin" });
+    const app = await buildTestApp(ctx.db);
+    const token = await loginAs(app, "admin-items-404");
+
+    const response = await app.inject({
+      method: "GET",
+      url: `/admin/reports/operator/00000000-0000-4000-8000-000000000000/items?${period()}`,
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(response.statusCode).toBe(404);
+    await app.close();
+  });
+
+  it("retorna 403 para operador autenticado (RBAC)", async () => {
+    const op = await createUser(ctx.db, { username: "op-items-403", role: "operator" });
+    const app = await buildTestApp(ctx.db);
+    const token = await loginAs(app, "op-items-403");
+
+    const response = await app.inject({
+      method: "GET",
+      url: `/admin/reports/operator/${op.id}/items?${period()}`,
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(response.statusCode).toBe(403);
+    await app.close();
+  });
+});

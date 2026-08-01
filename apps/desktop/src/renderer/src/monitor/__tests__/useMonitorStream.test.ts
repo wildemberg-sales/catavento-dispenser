@@ -84,6 +84,28 @@ describe("useMonitorStream", () => {
     unmount();
   });
 
+  it("chama onOpen a cada conexão bem-sucedida, inclusive depois de uma reconexão", async () => {
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValueOnce(okResponse(streamFrom("")))
+      .mockResolvedValueOnce(okResponse(streamFrom("")));
+    const onOpen = vi.fn();
+
+    const { unmount } = renderHook(() =>
+      useMonitorStream({
+        baseUrl: "http://localhost:3000",
+        getAccessToken: () => "token-abc",
+        onEvent: vi.fn(),
+        onOpen,
+        fetchImpl,
+        backoffMs: [0],
+      })
+    );
+
+    await waitFor(() => expect(onOpen).toHaveBeenCalledTimes(2));
+    unmount();
+  });
+
   it("para de tentar reconectar depois do unmount", async () => {
     const fetchImpl = vi.fn().mockRejectedValue(new Error("conexão perdida"));
 

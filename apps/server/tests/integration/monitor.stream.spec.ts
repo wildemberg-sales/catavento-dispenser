@@ -4,6 +4,7 @@ import { startTestDb, stopTestDb, truncateAll, type TestDbContext } from "../set
 import { createUser } from "../setup/factories.js";
 import { buildTestApp } from "../setup/build-test-app.js";
 import { monitorBus } from "../../src/lib/monitor-bus.js";
+import { onlineOperatorsStore } from "../../src/modules/monitor/online-operators.store.js";
 
 describe("GET /admin/stream (SSE)", () => {
   let ctx: TestDbContext;
@@ -82,6 +83,88 @@ describe("GET /admin/stream (SSE)", () => {
       url: "/admin/stream",
       headers: { authorization: `Bearer ${token}` },
     });
+    expect(response.statusCode).toBe(403);
+    await app.close();
+  });
+});
+
+describe("GET /admin/monitor/online-operators", () => {
+  let ctx: TestDbContext;
+
+  beforeAll(async () => {
+    ctx = await startTestDb();
+  }, 60000);
+
+  afterAll(async () => {
+    await stopTestDb(ctx);
+  });
+
+  beforeEach(async () => {
+    await truncateAll(ctx.db);
+    onlineOperatorsStore.clear();
+  });
+
+  async function loginAs(app: Awaited<ReturnType<typeof buildTestApp>>, username: string) {
+    const response = await app.inject({
+      method: "POST",
+      url: "/auth/login",
+      payload: { username, password: "senha-de-teste-123" },
+    });
+    return response.json().accessToken as string;
+  }
+
+  it("devolve o snapshot de quem está online — é o que permite a tela de Monitor hidratar o estado ao abrir, sem depender só de eventos ao vivo", async () => {
+    await createUser(ctx.db, { username: "admin1", role: "admin" });
+    const operator = await createUser(ctx.db, { username: "op-snapshot", role: "operator" });
+    const app = await buildTestApp(ctx.db);
+    const adminToken = await loginAs(app, "admin1");
+    await loginAs(app, "op-snapshot");
+
+    const response = await app.inject({
+      method: "GET",
+      url: "/admin/monitor/online-operators",
+      headers: { authorization: `Bearer ${adminToken}` },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ items: [{ operatorId: operator.id, displayName: operator.displayName }] });
+    await app.close();
+  });
+
+  it("não inclui operadores que já deslogaram", async () => {
+    await createUser(ctx.db, { username: "admin2", role: "admin" });
+    await createUser(ctx.db, { username: "op-logged-out", role: "operator" });
+    const app = await buildTestApp(ctx.db);
+    const adminToken = await loginAs(app, "admin2");
+    const loginResponse = await app.inject({
+      method: "POST",
+      url: "/auth/login",
+      payload: { username: "op-logged-out", password: "senha-de-teste-123" },
+    });
+    const { refreshToken } = loginResponse.json();
+
+    await app.inject({ method: "POST", url: "/auth/logout", payload: { refreshToken } });
+
+    const response = await app.inject({
+      method: "GET",
+      url: "/admin/monitor/online-operators",
+      headers: { authorization: `Bearer ${adminToken}` },
+    });
+    expect(response.json()).toEqual({ items: [] });
+    await app.close();
+  });
+
+  it("retorna 403 para operador", async () => {
+    await createUser(ctx.db, { username: "op-tentando-ver", role: "operator" });
+    const app = await buildTestApp(ctx.db);
+    const token = await loginAs(app, "op-tentando-ver");
+
+    const response = await app.inject({
+      method: "GET",
+      url: "/admin/monitor/online-operators",
+      headers: { authorization: `Bearer ${token}` },
+    });
+
     expect(response.statusCode).toBe(403);
     await app.close();
   });

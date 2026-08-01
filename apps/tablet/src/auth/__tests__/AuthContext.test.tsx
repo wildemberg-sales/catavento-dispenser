@@ -42,6 +42,20 @@ const secureStoreMock = {
   deleteItemAsync: jest.fn().mockResolvedValue(undefined),
 };
 
+// Estar logado dispara um heartbeat periódico (Tarefa #82) — inclusive um
+// imediato assim que o usuário é definido. Testes que dependem da ordem
+// exata das respostas do fetch (mockResolvedValueOnce em sequência) quebram
+// se não souberem responder também a essa chamada extra; esse helper deixa
+// o heartbeat sempre respondido, não importa quando ele dispara.
+function withHeartbeatMock(fetchImpl: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>) {
+  return jest.fn((input: RequestInfo | URL, init?: RequestInit) => {
+    if (String(input).endsWith("/queue/heartbeat")) {
+      return Promise.resolve(jsonResponse(204, {}));
+    }
+    return fetchImpl(input, init);
+  });
+}
+
 describe("AuthContext", () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -104,16 +118,22 @@ describe("AuthContext", () => {
   });
 
   it("logout limpa o usuário e remove o refresh token persistido", async () => {
-    const fetchMock = jest
-      .fn()
-      .mockResolvedValueOnce(
-        jsonResponse(200, {
-          accessToken: "access-1",
-          refreshToken: "refresh-1",
-          user: { id: "1", username: "op1", role: "operator", displayName: "Operador 1" },
-        })
-      )
-      .mockResolvedValueOnce(jsonResponse(204, {}));
+    const fetchMock = withHeartbeatMock((input) => {
+      const url = String(input);
+      if (url.endsWith("/auth/login")) {
+        return Promise.resolve(
+          jsonResponse(200, {
+            accessToken: "access-1",
+            refreshToken: "refresh-1",
+            user: { id: "1", username: "op1", role: "operator", displayName: "Operador 1" },
+          })
+        );
+      }
+      if (url.endsWith("/auth/logout")) {
+        return Promise.resolve(jsonResponse(204, {}));
+      }
+      return Promise.reject(new Error(`unexpected url: ${url}`));
+    });
 
     await render(
       <AuthProvider baseUrl="http://10.0.2.2:3000" fetchImpl={fetchMock} secureStore={secureStoreMock}>
@@ -175,20 +195,36 @@ describe("AuthContext", () => {
   });
 
   it("uma chamada autenticada expirada renova o token automaticamente e repete a requisição", async () => {
-    const fetchMock = jest
-      .fn()
-      .mockResolvedValueOnce(
-        jsonResponse(200, {
-          accessToken: "access-1",
-          refreshToken: "refresh-1",
-          user: { id: "1", username: "op1", role: "operator", displayName: "Operador 1" },
-        })
-      )
-      .mockResolvedValueOnce(jsonResponse(401, { error: "UNAUTHORIZED", message: "expirado" }))
-      .mockResolvedValueOnce(
-        jsonResponse(200, { accessToken: "access-2", refreshToken: "refresh-2", user: { id: "1", username: "op1", role: "operator", displayName: "Operador 1" } })
-      )
-      .mockResolvedValueOnce(jsonResponse(200, { available: false }));
+    let currentCallCount = 0;
+    const fetchMock = withHeartbeatMock((input) => {
+      const url = String(input);
+      if (url.endsWith("/auth/login")) {
+        return Promise.resolve(
+          jsonResponse(200, {
+            accessToken: "access-1",
+            refreshToken: "refresh-1",
+            user: { id: "1", username: "op1", role: "operator", displayName: "Operador 1" },
+          })
+        );
+      }
+      if (url.endsWith("/auth/refresh")) {
+        return Promise.resolve(
+          jsonResponse(200, {
+            accessToken: "access-2",
+            refreshToken: "refresh-2",
+            user: { id: "1", username: "op1", role: "operator", displayName: "Operador 1" },
+          })
+        );
+      }
+      if (url.endsWith("/queue/current")) {
+        currentCallCount++;
+        if (currentCallCount === 1) {
+          return Promise.resolve(jsonResponse(401, { error: "UNAUTHORIZED", message: "expirado" }));
+        }
+        return Promise.resolve(jsonResponse(200, { available: false }));
+      }
+      return Promise.reject(new Error(`unexpected url: ${url}`));
+    });
 
     await render(
       <AuthProvider baseUrl="http://10.0.2.2:3000" fetchImpl={fetchMock} secureStore={secureStoreMock}>
@@ -207,17 +243,25 @@ describe("AuthContext", () => {
   });
 
   it("se a renovação automática falhar durante uma chamada autenticada, desloga o usuário", async () => {
-    const fetchMock = jest
-      .fn()
-      .mockResolvedValueOnce(
-        jsonResponse(200, {
-          accessToken: "access-1",
-          refreshToken: "refresh-1",
-          user: { id: "1", username: "op1", role: "operator", displayName: "Operador 1" },
-        })
-      )
-      .mockResolvedValueOnce(jsonResponse(401, { error: "UNAUTHORIZED", message: "expirado" }))
-      .mockResolvedValueOnce(jsonResponse(401, { error: "INVALID_REFRESH_TOKEN", message: "invalido" }));
+    const fetchMock = withHeartbeatMock((input) => {
+      const url = String(input);
+      if (url.endsWith("/auth/login")) {
+        return Promise.resolve(
+          jsonResponse(200, {
+            accessToken: "access-1",
+            refreshToken: "refresh-1",
+            user: { id: "1", username: "op1", role: "operator", displayName: "Operador 1" },
+          })
+        );
+      }
+      if (url.endsWith("/queue/current")) {
+        return Promise.resolve(jsonResponse(401, { error: "UNAUTHORIZED", message: "expirado" }));
+      }
+      if (url.endsWith("/auth/refresh")) {
+        return Promise.resolve(jsonResponse(401, { error: "INVALID_REFRESH_TOKEN", message: "invalido" }));
+      }
+      return Promise.reject(new Error(`unexpected url: ${url}`));
+    });
 
     await render(
       <AuthProvider baseUrl="http://10.0.2.2:3000" fetchImpl={fetchMock} secureStore={secureStoreMock}>
@@ -233,5 +277,78 @@ describe("AuthContext", () => {
 
     await waitFor(() => expect(screen.getByTestId("api-result").props.children).toBe("erro"));
     await waitFor(() => expect(screen.getByTestId("user").props.children).toBe("sem-usuario"));
+  });
+
+  it("envia um heartbeat imediatamente ao logar, e periodicamente enquanto logado", async () => {
+    jest.useFakeTimers();
+    try {
+      const fetchMock = jest.fn().mockResolvedValue(
+        jsonResponse(200, {
+          accessToken: "access-1",
+          refreshToken: "refresh-1",
+          user: { id: "1", username: "op1", role: "operator", displayName: "Operador 1" },
+        })
+      );
+
+      await render(
+        <AuthProvider baseUrl="http://10.0.2.2:3000" fetchImpl={fetchMock} secureStore={secureStoreMock}>
+          <TestConsumer />
+        </AuthProvider>
+      );
+
+      await waitFor(() => expect(screen.getByTestId("loading").props.children).toBe("false"));
+      await fireEvent.press(screen.getByTestId("login-btn"));
+      await waitFor(() => expect(screen.getByTestId("user").props.children).toBe("Operador 1"));
+
+      const heartbeatCallsAfterLogin = fetchMock.mock.calls.filter(([u]) => String(u).endsWith("/queue/heartbeat")).length;
+      expect(heartbeatCallsAfterLogin).toBe(1);
+
+      await jest.advanceTimersByTimeAsync(60_000);
+      const heartbeatCallsAfterOneTick = fetchMock.mock.calls.filter(([u]) => String(u).endsWith("/queue/heartbeat")).length;
+      expect(heartbeatCallsAfterOneTick).toBe(2);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it("para de enviar heartbeat depois do logout", async () => {
+    jest.useFakeTimers();
+    try {
+      const fetchMock = withHeartbeatMock((input) => {
+        const url = String(input);
+        if (url.endsWith("/auth/login")) {
+          return Promise.resolve(
+            jsonResponse(200, {
+              accessToken: "access-1",
+              refreshToken: "refresh-1",
+              user: { id: "1", username: "op1", role: "operator", displayName: "Operador 1" },
+            })
+          );
+        }
+        if (url.endsWith("/auth/logout")) {
+          return Promise.resolve(jsonResponse(204, {}));
+        }
+        return Promise.reject(new Error(`unexpected url: ${url}`));
+      });
+
+      await render(
+        <AuthProvider baseUrl="http://10.0.2.2:3000" fetchImpl={fetchMock} secureStore={secureStoreMock}>
+          <TestConsumer />
+        </AuthProvider>
+      );
+
+      await waitFor(() => expect(screen.getByTestId("loading").props.children).toBe("false"));
+      await fireEvent.press(screen.getByTestId("login-btn"));
+      await waitFor(() => expect(screen.getByTestId("user").props.children).toBe("Operador 1"));
+
+      await fireEvent.press(screen.getByTestId("logout-btn"));
+      await waitFor(() => expect(screen.getByTestId("user").props.children).toBe("sem-usuario"));
+
+      const callsAtLogout = fetchMock.mock.calls.length;
+      await jest.advanceTimersByTimeAsync(120_000);
+      expect(fetchMock.mock.calls.length).toBe(callsAtLogout);
+    } finally {
+      jest.useRealTimers();
+    }
   });
 });

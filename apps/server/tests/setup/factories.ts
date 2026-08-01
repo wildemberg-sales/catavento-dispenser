@@ -170,6 +170,7 @@ export async function createWorkLog(
     startedAt?: Date;
     completedAt?: Date | null;
     outcome?: "completed" | "abandoned" | "problem" | "cancelled";
+    problemNote?: string;
   }
 ) {
   const [log] = await db
@@ -180,6 +181,7 @@ export async function createWorkLog(
       startedAt: overrides.startedAt ?? new Date(),
       completedAt: overrides.completedAt ?? null,
       outcome: overrides.outcome,
+      problemNote: overrides.problemNote,
     })
     .returning();
   return log!;

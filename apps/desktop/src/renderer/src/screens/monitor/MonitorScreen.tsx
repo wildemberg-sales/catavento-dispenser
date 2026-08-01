@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useAuth } from "../../auth/AuthContext";
 import { createAdminQueueApi } from "../../api/adminQueue.api";
 import { createUsersApi } from "../../api/users.api";
+import { createMonitorApi } from "../../api/monitor.api";
 import { useMonitorStream, type MonitorEvent } from "../../monitor/useMonitorStream";
 import { Card } from "../../components/Card";
 import { PageHeader } from "../../components/PageHeader";
@@ -16,6 +17,7 @@ export function MonitorScreen() {
   const { apiClient } = useAuth();
   const adminQueueApi = useMemo(() => createAdminQueueApi(apiClient), [apiClient]);
   const usersApi = useMemo(() => createUsersApi(apiClient), [apiClient]);
+  const monitorApi = useMemo(() => createMonitorApi(apiClient), [apiClient]);
 
   const [queueSize, setQueueSize] = useState<number | null>(null);
   const [operatorNames, setOperatorNames] = useState<Record<string, string>>({});
@@ -23,15 +25,33 @@ export function MonitorScreen() {
   const [feed, setFeed] = useState<ActivityEntry[]>([]);
   const feedSequenceRef = useRef(0);
 
+  // Antes o estado de "quem está online" só existia a partir de eventos SSE
+  // ao vivo — ao abrir a tela (ou depois de uma reconexão, que pode ter
+  // perdido eventos no meio), o snapshot real do servidor (Tarefa #75) é a
+  // única fonte confiável. Sem isso o card mostrava 0 operadores mesmo com
+  // gente logada, até o próximo evento ao vivo.
+  const syncOnlineOperators = useCallback(() => {
+    monitorApi.getOnlineOperators().then((result) => {
+      setOnlineOperatorIds(new Set(result.items.map((item) => item.operatorId)));
+      setOperatorNames((current) => {
+        const next = { ...current };
+        for (const item of result.items) next[item.operatorId] = item.displayName;
+        return next;
+      });
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [monitorApi]);
+
   useEffect(() => {
     adminQueueApi.list({ status: "pending", pageSize: 1 }).then((result) => setQueueSize(result.total));
     usersApi.list({ role: "operator" }).then((result) => {
       const map: Record<string, string> = {};
       for (const user of result.items) map[user.id] = user.displayName;
-      setOperatorNames(map);
+      setOperatorNames((current) => ({ ...map, ...current }));
     });
+    syncOnlineOperators();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [adminQueueApi, usersApi]);
+  }, [adminQueueApi, usersApi, syncOnlineOperators]);
 
   const nameFor = useCallback((operatorId: string) => operatorNames[operatorId] ?? operatorId, [operatorNames]);
 
@@ -79,6 +99,7 @@ export function MonitorScreen() {
     baseUrl: apiClient.getBaseUrl(),
     getAccessToken: () => apiClient.getAccessToken(),
     onEvent: handleEvent,
+    onOpen: syncOnlineOperators,
     fetchImpl: apiClient.getFetchImpl(),
   });
 

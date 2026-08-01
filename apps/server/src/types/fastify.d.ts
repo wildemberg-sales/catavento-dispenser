@@ -15,6 +15,7 @@ declare module "fastify" {
       id: string;
       username: string;
       role: Role;
+      displayName: string;
     };
     refreshJwtVerify<Decoded extends object | string = { sub: string; jti: string }>(
       options?: Record<string, unknown>
@@ -30,7 +31,9 @@ declare module "@fastify/jwt" {
   interface FastifyJWT {
     // União porque o mesmo tipo de payload cobre tanto o access token
     // (app.jwt) quanto o refresh token (app.jwt.refresh, ver auth.service.ts).
-    payload: { sub: string; role: Role; username: string } | { sub: string; jti: string };
-    user: { sub: string; role: Role; username: string } | { sub: string; jti: string };
+    // displayName vai no access token pra permitir o heartbeat (Seção 9.1)
+    // marcar o operador online sem precisar de um lookup no banco a cada ping.
+    payload: { sub: string; role: Role; username: string; displayName: string } | { sub: string; jti: string };
+    user: { sub: string; role: Role; username: string; displayName: string } | { sub: string; jti: string };
   }
 }

@@ -5,3 +5,4 @@ export * as queue from "./queue/index.js";
 export * as imports from "./imports/index.js";
 export * as products from "./products/index.js";
 export * as analytics from "./analytics/index.js";
+export * as monitor from "./monitor/index.js";

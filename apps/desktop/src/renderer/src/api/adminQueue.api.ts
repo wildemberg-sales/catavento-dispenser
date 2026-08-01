@@ -28,6 +28,10 @@ export function createAdminQueueApi(client: ApiClient) {
       return client.request(`/admin/queue/items/${id}/link`, { method: "POST", body: input });
     },
 
+    getPriorityRules(): Promise<PriorityRulesResponse> {
+      return client.request("/admin/queue/rules");
+    },
+
     setPriorityRules(input: UpdatePriorityRulesInput): Promise<PriorityRulesResponse> {
       return client.request("/admin/queue/rules", { method: "PUT", body: input });
     },

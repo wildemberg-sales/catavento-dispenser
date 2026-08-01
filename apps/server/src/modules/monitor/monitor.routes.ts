@@ -1,10 +1,23 @@
 import type { FastifyInstance } from "fastify";
 import { requireAuth, requireRole } from "../auth/rbac.js";
 import { monitorBus } from "../../lib/monitor-bus.js";
+import { onlineOperatorsStore } from "./online-operators.store.js";
 
 const HEARTBEAT_INTERVAL_MS = 25000;
 
 export default async function monitorRoutes(app: FastifyInstance) {
+  // Snapshot do estado atual — sem isso, um cliente do Monitor só sabia quem
+  // estava online a partir dos eventos ao vivo recebidos DEPOIS de abrir a
+  // tela (ou de reconectar o SSE), então operadores que já estavam online
+  // antes disso apareciam como offline até o próximo evento.
+  app.get(
+    "/monitor/online-operators",
+    { preHandler: [requireAuth(app), requireRole("admin")] },
+    async (_req, reply) => {
+      return reply.status(200).send({ items: onlineOperatorsStore.listOnline() });
+    }
+  );
+
   app.get(
     "/stream",
     { preHandler: [requireAuth(app), requireRole("admin")] },

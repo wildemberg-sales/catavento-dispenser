@@ -1,4 +1,4 @@
-import type { OperatorReport } from "@catavento/contracts/analytics";
+import type { OperatorReport, OperatorReportItem } from "@catavento/contracts/analytics";
 import type { AnalyticsRepository } from "./analytics.repository.js";
 import type { UsersRepository } from "../users/users.repository.js";
 import { OperatorNotFoundError, RangeTooLargeError } from "../../lib/errors.js";
@@ -22,6 +22,25 @@ export function analyticsService(deps: {
   const maxRangeDays = deps.maxRangeDays ?? MAX_RANGE_DAYS_DEFAULT;
 
   return {
+    async getOperatorReportItems(
+      operatorId: string,
+      from: string,
+      to: string,
+      pagination: { page: number; pageSize: number }
+    ): Promise<{ items: OperatorReportItem[]; total: number; page: number; pageSize: number }> {
+      assertRange(from, to, maxRangeDays);
+      const user = await usersRepo.findById(operatorId);
+      if (!user) throw new OperatorNotFoundError();
+
+      const { items, total } = await repo.getOperatorReportItems(operatorId, from, to, pagination);
+      return {
+        items: items.map((item) => ({ ...item, outcome: item.outcome as OperatorReportItem["outcome"] })),
+        total,
+        page: pagination.page,
+        pageSize: pagination.pageSize,
+      };
+    },
+
     async getByOperator(from: string, to: string, pagination: { page: number; pageSize: number }) {
       assertRange(from, to, maxRangeDays);
       const { items, total } = await repo.getByOperator(from, to, pagination);

@@ -3,8 +3,16 @@ import * as ExpoSecureStore from "expo-secure-store";
 import type { AuthUser } from "@catavento/contracts/auth";
 import { createApiClient, type ApiClient } from "../api/client";
 import { createAuthApi } from "../api/auth.api";
+import { createQueueApi } from "../api/queue.api";
 
 const REFRESH_TOKEN_KEY = "catavento.refreshToken";
+// Mantém o operador marcado como online no Monitor do desktop (Tarefa #74)
+// enquanto o app estiver logado, e não só entre login/logout — sem isso um
+// app que restaura a sessão a partir do refresh token salvo (sem passar por
+// login()) nunca chegava a aparecer como online até o primeiro heartbeat, e
+// uma queda de rede/crash sem logout explícito deixava o operador "online"
+// pra sempre até o sweep no servidor expirar (Seção 6.4, OPERATOR_ONLINE_TIMEOUT_MINUTES).
+const HEARTBEAT_INTERVAL_MS = 60_000;
 
 type SecureStoreLike = {
   getItemAsync: (key: string) => Promise<string | null>;
@@ -61,6 +69,22 @@ export function AuthProvider({
   );
 
   const authApi = useMemo(() => createAuthApi(apiClient), [apiClient]);
+  const queueApi = useMemo(() => createQueueApi(apiClient), [apiClient]);
+
+  useEffect(() => {
+    if (!user) return;
+
+    const sendHeartbeat = () => {
+      queueApi.heartbeat().catch(() => {
+        // Falha de rede pontual não deve derrubar o app — o próximo tick
+        // (ou o sweep no servidor) resolve sozinho.
+      });
+    };
+
+    sendHeartbeat();
+    const timer = setInterval(sendHeartbeat, HEARTBEAT_INTERVAL_MS);
+    return () => clearInterval(timer);
+  }, [user, queueApi]);
 
   useEffect(() => {
     (async () => {

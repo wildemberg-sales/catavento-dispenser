@@ -42,6 +42,15 @@ export default async function adminQueueRoutes(app: FastifyInstance) {
     }
   );
 
+  app.get(
+    "/rules",
+    { preHandler: [requireAuth(app), requireRole("admin")] },
+    async (_req, reply) => {
+      const rules = await priorityRulesRepo.findAll();
+      return reply.status(200).send({ rules });
+    }
+  );
+
   app.put(
     "/rules",
     { preHandler: [requireAuth(app), requireRole("admin")] },

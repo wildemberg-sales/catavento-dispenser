@@ -59,6 +59,17 @@ const operatorReport = {
   timeSeries: [{ date: "2026-01-01", completedCount: 3, avgDurationSeconds: 100, itemsPerHour: 4 }],
 };
 
+const reportItem = {
+  workLogId: "wl-1",
+  queueItemId: "item-1",
+  productName: "Bolo Fake Rosa",
+  outcome: "problem",
+  startedAt: "2026-01-01T10:00:00.000Z",
+  completedAt: "2026-01-01T10:05:00.000Z",
+  durationSeconds: 300,
+  problemNote: "Foto não bate com o pedido",
+};
+
 function buildFetchMock() {
   return vi.fn((input: RequestInfo | URL) => {
     const url = String(input);
@@ -72,6 +83,9 @@ function buildFetchMock() {
       return Promise.resolve(
         jsonResponse(200, { items: [{ bucket: "2026-01-01", completedCount: 4 }, { bucket: "2026-01-02", completedCount: 6 }] })
       );
+    }
+    if (url.includes("/admin/reports/operator/op-1/items")) {
+      return Promise.resolve(jsonResponse(200, { items: [reportItem], total: 1, page: 1, pageSize: 20 }));
     }
     if (url.includes("/admin/reports/operator/op-1")) {
       return Promise.resolve(jsonResponse(200, operatorReport));
@@ -160,13 +174,19 @@ describe("ReportsScreen", () => {
       if (url.includes("/admin/analytics/by-operator")) {
         return Promise.resolve(jsonResponse(200, { items: [operatorRow], total: 1, page: 1, pageSize: 20 }));
       }
+      if (url.includes("/admin/reports/operator/op-1/items")) {
+        return Promise.resolve(jsonResponse(200, { items: [], total: 0, page: 1, pageSize: 20 }));
+      }
       if (url.includes("/admin/reports/operator/op-1")) {
         return Promise.resolve(
           jsonResponse(200, {
             ...operatorReport,
-            overview: { ...operatorReport.overview, punctuality: { ...operatorReport.overview.punctuality, punctualityIndex: null } },
-            byProduct: [{ ...operatorReport.byProduct[0], avgDurationSeconds: null, teamAvgDurationSeconds: null }],
-            ranking: { ...operatorReport.ranking, positionAmongOperators: null },
+            overview: {
+              ...operatorReport.overview,
+              punctuality: { ...operatorReport.overview.punctuality, punctualityIndex: null, avgGapSeconds: null, durationCoefficientOfVariation: null },
+            },
+            byProduct: [{ ...operatorReport.byProduct[0], avgDurationSeconds: null, teamAvgDurationSeconds: null, relativeSpeedIndex: null }],
+            ranking: { ...operatorReport.ranking, positionAmongOperators: null, weightedRelativeSpeedScore: null },
           })
         );
       }
@@ -225,8 +245,57 @@ describe("ReportsScreen", () => {
     await screen.findByTestId("operator-select");
     fireEvent.change(screen.getByTestId("operator-select"), { target: { value: "op-1" } });
 
-    expect(await screen.findByText("Bolo Fake Rosa")).toBeTruthy();
+    expect((await screen.findAllByText("Bolo Fake Rosa")).length).toBeGreaterThan(0);
     expect(screen.getByText("2 de 8")).toBeTruthy();
+  });
+
+  it("relatório individual mostra os campos de qualidade/pontualidade/ranking que antes ficavam escondidos", async () => {
+    renderScreen(buildFetchMock());
+    await screen.findByText("Fulano");
+
+    fireEvent.click(screen.getByTestId("tab-operator-report"));
+    await screen.findByTestId("operator-select");
+    fireEvent.change(screen.getByTestId("operator-select"), { target: { value: "op-1" } });
+
+    expect((await screen.findAllByText("5%")).length).toBe(2);
+    expect(screen.getByText("0.88")).toBeTruthy();
+    expect(screen.getByText("30")).toBeTruthy();
+    expect(screen.getByText("0.20")).toBeTruthy();
+    expect(screen.getByText("1.20")).toBeTruthy();
+    expect(screen.getByText("1.10")).toBeTruthy();
+  });
+
+  it("relatório individual mostra os itens do período, incluindo a observação de problema", async () => {
+    renderScreen(buildFetchMock());
+    await screen.findByText("Fulano");
+
+    fireEvent.click(screen.getByTestId("tab-operator-report"));
+    await screen.findByTestId("operator-select");
+    fireEvent.change(screen.getByTestId("operator-select"), { target: { value: "op-1" } });
+
+    expect(await screen.findByText("Foto não bate com o pedido")).toBeTruthy();
+    expect(screen.getByText("Problema")).toBeTruthy();
+  });
+
+  it("mostra os controles de paginação quando há mais itens do que o tamanho da página e busca a próxima página", async () => {
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/admin/analytics/by-operator")) {
+        return Promise.resolve(jsonResponse(200, { items: [operatorRow], total: 45, page: 1, pageSize: 20 }));
+      }
+      return Promise.reject(new Error(`unexpected url: ${url}`));
+    });
+    renderScreen(fetchMock);
+    await screen.findByText("Fulano");
+
+    expect(screen.getByTestId("operator-page-label").textContent).toBe("Página 1 de 3 (45 no total)");
+
+    fireEvent.click(screen.getByTestId("operator-page-next"));
+
+    await waitFor(() => {
+      const lastCall = fetchMock.mock.calls.at(-1)?.[0] as string;
+      expect(lastCall).toContain("page=2");
+    });
   });
 
   it("botão de exportar chama o endpoint de export com os parâmetros certos", async () => {

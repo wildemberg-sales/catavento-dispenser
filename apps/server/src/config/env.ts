@@ -9,6 +9,10 @@ const envSchema = z.object({
   REFRESH_TOKEN_TTL: z.string().default("7d"),
   ABANDONMENT_CHECK_INTERVAL_MS: z.coerce.number().int().positive().default(60000),
   ABANDONMENT_TIMEOUT_MINUTES: z.coerce.number().int().positive().default(15),
+  OPERATOR_ONLINE_SWEEP_INTERVAL_MS: z.coerce.number().int().positive().default(30000),
+  // Maior que o intervalo de heartbeat do app do operador (60s, fixo no
+  // client) — tolera perder 2 pings seguidos antes de considerar offline.
+  OPERATOR_ONLINE_TIMEOUT_MINUTES: z.coerce.number().positive().default(3),
   PORT: z.coerce.number().int().positive().default(3000),
   LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug", "trace"]).default("info"),
   STORAGE_DRIVER: z.enum(["local", "memory"]).default("local"),

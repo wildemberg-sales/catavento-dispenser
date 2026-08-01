@@ -4,6 +4,8 @@ import { usersRepository } from "../users/users.repository.js";
 import { authRepository } from "./auth.repository.js";
 import { authService } from "./auth.service.js";
 import { monitorBus } from "../../lib/monitor-bus.js";
+import { onlineOperatorsStore } from "../monitor/online-operators.store.js";
+import { queueRepository } from "../queue/queue.repository.js";
 
 export default async function authRoutes(app: FastifyInstance) {
   const service = authService({
@@ -11,6 +13,8 @@ export default async function authRoutes(app: FastifyInstance) {
     usersRepo: usersRepository(app.db),
     authRepo: authRepository(app.db),
     bus: monitorBus,
+    onlineStore: onlineOperatorsStore,
+    queueRepo: queueRepository(app.db),
   });
 
   app.post("/login", async (req, reply) => {

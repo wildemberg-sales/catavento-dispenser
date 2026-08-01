@@ -258,4 +258,46 @@ describe("POST /queue/next", () => {
     expect(response.json().item.product.name).toBe("Produto que será desativado");
     await app.close();
   });
+
+  it("aging: um item de baixa prioridade esperando há mais de 5h supera um item recente de prioridade maior", async () => {
+    await createUser(ctx.db, { username: "op-aging", role: "operator" });
+    const batch = await createImportBatch(ctx.db);
+    const sixHoursAgo = new Date(Date.now() - 6 * 60 * 60 * 1000);
+    const oldLowPriority = await createQueueItem(ctx.db, {
+      batchId: batch.id,
+      priority: 1,
+      createdAt: sixHoursAgo,
+    });
+    await createQueueItem(ctx.db, { batchId: batch.id, priority: 5 });
+    const app = await buildTestApp(ctx.db);
+    const token = await loginAs(app, "op-aging");
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/queue/next",
+      headers: { authorization: `Bearer ${token}` },
+    });
+
+    expect(response.json().item.id).toBe(oldLowPriority.id);
+    await app.close();
+  });
+
+  it("aging: o bônus é limitado a +5, então um item recente com prioridade muito maior ainda vence", async () => {
+    await createUser(ctx.db, { username: "op-aging-cap", role: "operator" });
+    const batch = await createImportBatch(ctx.db);
+    const tenHoursAgo = new Date(Date.now() - 10 * 60 * 60 * 1000);
+    await createQueueItem(ctx.db, { batchId: batch.id, priority: 1, createdAt: tenHoursAgo });
+    const highPriority = await createQueueItem(ctx.db, { batchId: batch.id, priority: 10 });
+    const app = await buildTestApp(ctx.db);
+    const token = await loginAs(app, "op-aging-cap");
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/queue/next",
+      headers: { authorization: `Bearer ${token}` },
+    });
+
+    expect(response.json().item.id).toBe(highPriority.id);
+    await app.close();
+  });
 });

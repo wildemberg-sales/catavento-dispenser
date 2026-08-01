@@ -21,6 +21,10 @@ export function createQueueApi(client: ApiClient) {
         body: { note },
       });
     },
+
+    heartbeat(): Promise<void> {
+      return client.request<void>("/queue/heartbeat", { method: "POST" });
+    },
   };
 }
 

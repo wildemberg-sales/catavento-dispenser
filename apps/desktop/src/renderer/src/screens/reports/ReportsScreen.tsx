@@ -1,5 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import type { OperatorAnalyticsRow, OperatorReport, ProductAnalyticsRow, ThroughputPoint } from "@catavento/contracts/analytics";
+import type {
+  OperatorAnalyticsRow,
+  OperatorReport,
+  OperatorReportItem,
+  ProductAnalyticsRow,
+  ThroughputPoint,
+} from "@catavento/contracts/analytics";
 import { useAuth } from "../../auth/AuthContext";
 import { createAnalyticsApi } from "../../api/analytics.api";
 import { createUsersApi } from "../../api/users.api";
@@ -27,6 +33,56 @@ function defaultDateRange(): { from: string; to: string } {
   return { from: from.toISOString().slice(0, 10), to: today.toISOString().slice(0, 10) };
 }
 
+const PAGE_SIZE = 20;
+
+const OUTCOME_LABELS: Record<string, string> = {
+  completed: "Concluído",
+  abandoned: "Abandonado",
+  problem: "Problema",
+};
+
+// Antes as abas "Por operador" e "Por produto" sempre pediam a página 1 sem
+// nenhum controle — qualquer operador/produto além do 20º ficava invisível,
+// sem nenhuma indicação de que havia mais dados.
+function PaginationBar({
+  page,
+  total,
+  onChange,
+  testIdPrefix,
+}: {
+  page: number;
+  total: number;
+  onChange: (page: number) => void;
+  testIdPrefix: string;
+}) {
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  if (total <= PAGE_SIZE) return null;
+
+  return (
+    <div style={styles.paginationBar}>
+      <button
+        data-testid={`${testIdPrefix}-prev`}
+        className="btn btn-sm btn-ghost"
+        disabled={page <= 1}
+        onClick={() => onChange(page - 1)}
+      >
+        Anterior
+      </button>
+      <span style={styles.paginationLabel} data-testid={`${testIdPrefix}-label`}>
+        Página {page} de {totalPages} ({total} no total)
+      </span>
+      <button
+        data-testid={`${testIdPrefix}-next`}
+        className="btn btn-sm btn-ghost"
+        disabled={page >= totalPages}
+        onClick={() => onChange(page + 1)}
+      >
+        Próxima
+      </button>
+    </div>
+  );
+}
+
 export function ReportsScreen() {
   const { apiClient } = useAuth();
   const analyticsApi = useMemo(() => createAnalyticsApi(apiClient), [apiClient]);
@@ -39,11 +95,18 @@ export function ReportsScreen() {
   const [bucket, setBucket] = useState<"hour" | "day">("day");
 
   const [operatorRows, setOperatorRows] = useState<OperatorAnalyticsRow[] | null>(null);
+  const [operatorTotal, setOperatorTotal] = useState(0);
+  const [operatorPage, setOperatorPage] = useState(1);
   const [productRows, setProductRows] = useState<ProductAnalyticsRow[] | null>(null);
+  const [productTotal, setProductTotal] = useState(0);
+  const [productPage, setProductPage] = useState(1);
   const [throughputPoints, setThroughputPoints] = useState<ThroughputPoint[] | null>(null);
   const [operators, setOperators] = useState<{ id: string; displayName: string }[]>([]);
   const [selectedOperatorId, setSelectedOperatorId] = useState("");
   const [operatorReport, setOperatorReport] = useState<OperatorReport | null>(null);
+  const [reportItems, setReportItems] = useState<OperatorReportItem[] | null>(null);
+  const [reportItemsTotal, setReportItemsTotal] = useState(0);
+  const [reportItemsPage, setReportItemsPage] = useState(1);
   const [error, setError] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
 
@@ -64,20 +127,48 @@ export function ReportsScreen() {
       setError(err instanceof ApiClientError ? err.message : "Não foi possível carregar o relatório.");
 
     if (activeTab === "by-operator") {
-      analyticsApi.byOperator(period).then((result) => setOperatorRows(result.items)).catch(handleError);
+      analyticsApi
+        .byOperator({ ...period, page: operatorPage, pageSize: PAGE_SIZE })
+        .then((result) => {
+          setOperatorRows(result.items);
+          setOperatorTotal(result.total);
+        })
+        .catch(handleError);
     } else if (activeTab === "by-product") {
-      analyticsApi.byProduct(period).then((result) => setProductRows(result.items)).catch(handleError);
+      analyticsApi
+        .byProduct({ ...period, page: productPage, pageSize: PAGE_SIZE })
+        .then((result) => {
+          setProductRows(result.items);
+          setProductTotal(result.total);
+        })
+        .catch(handleError);
     } else if (activeTab === "throughput") {
       analyticsApi.throughput({ ...period, bucket }).then((result) => setThroughputPoints(result.items)).catch(handleError);
     } else if (activeTab === "operator-report" && selectedOperatorId) {
       analyticsApi.operatorReport(selectedOperatorId, period).then(setOperatorReport).catch(handleError);
+      analyticsApi
+        .operatorReportItems(selectedOperatorId, { ...period, page: reportItemsPage, pageSize: PAGE_SIZE })
+        .then((result) => {
+          setReportItems(result.items);
+          setReportItemsTotal(result.total);
+        })
+        .catch(handleError);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [analyticsApi, activeTab, fromDate, toDate, bucket, selectedOperatorId]);
+  }, [analyticsApi, activeTab, fromDate, toDate, bucket, selectedOperatorId, operatorPage, productPage, reportItemsPage]);
 
   useEffect(() => {
     refresh();
   }, [refresh]);
+
+  // Trocar o período ou o operador selecionado invalida a paginação
+  // corrente — sem isso, ficar na página 3 e mudar a data podia pedir uma
+  // página que não existe mais no novo conjunto de resultados.
+  useEffect(() => {
+    setOperatorPage(1);
+    setProductPage(1);
+    setReportItemsPage(1);
+  }, [fromDate, toDate, selectedOperatorId]);
 
   async function handleExport(format: "csv" | "xlsx") {
     setExporting(true);
@@ -201,6 +292,7 @@ export function ReportsScreen() {
               ))}
             </tbody>
           </table>
+          <PaginationBar page={operatorPage} total={operatorTotal} onChange={setOperatorPage} testIdPrefix="operator-page" />
         </Card>
       ) : null}
 
@@ -228,6 +320,7 @@ export function ReportsScreen() {
               ))}
             </tbody>
           </table>
+          <PaginationBar page={productPage} total={productTotal} onChange={setProductPage} testIdPrefix="product-page" />
         </Card>
       ) : null}
 
@@ -286,14 +379,40 @@ export function ReportsScreen() {
                   <span style={styles.statValue}>{Math.round(operatorReport.overview.quality.completionRate * 100)}%</span>
                 </Card>
                 <Card style={styles.statCard}>
+                  <span style={styles.statLabel}>Taxa de problemas</span>
+                  <span style={styles.statValue}>{Math.round(operatorReport.overview.quality.problemRate * 100)}%</span>
+                </Card>
+                <Card style={styles.statCard}>
+                  <span style={styles.statLabel}>Taxa de abandono</span>
+                  <span style={styles.statValue}>{Math.round(operatorReport.overview.quality.abandonmentRate * 100)}%</span>
+                </Card>
+                <Card style={styles.statCard}>
+                  <span style={styles.statLabel}>Índice de qualidade</span>
+                  <span style={styles.statValue}>{operatorReport.overview.quality.qualityIndex.toFixed(2)}</span>
+                </Card>
+                <Card style={styles.statCard}>
                   <span style={styles.statLabel}>Índice de pontualidade</span>
                   <span style={styles.statValue}>{operatorReport.overview.punctuality.punctualityIndex ?? "-"}</span>
+                </Card>
+                <Card style={styles.statCard}>
+                  <span style={styles.statLabel}>Intervalo médio entre itens (s)</span>
+                  <span style={styles.statValue}>{operatorReport.overview.punctuality.avgGapSeconds ?? "-"}</span>
+                </Card>
+                <Card style={styles.statCard}>
+                  <span style={styles.statLabel}>Variação de duração (CV)</span>
+                  <span style={styles.statValue}>
+                    {operatorReport.overview.punctuality.durationCoefficientOfVariation?.toFixed(2) ?? "-"}
+                  </span>
                 </Card>
                 <Card style={styles.statCard}>
                   <span style={styles.statLabel}>Posição no ranking</span>
                   <span style={styles.statValue}>
                     {`${operatorReport.ranking.positionAmongOperators ?? "-"} de ${operatorReport.ranking.totalOperatorsRanked}`}
                   </span>
+                </Card>
+                <Card style={styles.statCard}>
+                  <span style={styles.statLabel}>Velocidade relativa (ponderada)</span>
+                  <span style={styles.statValue}>{operatorReport.ranking.weightedRelativeSpeedScore?.toFixed(2) ?? "-"}</span>
                 </Card>
               </div>
 
@@ -305,6 +424,7 @@ export function ReportsScreen() {
                       <th>Concluídos</th>
                       <th>Duração média (s)</th>
                       <th>Média da equipe (s)</th>
+                      <th>Índice de velocidade relativa</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -314,6 +434,7 @@ export function ReportsScreen() {
                         <td>{row.completedCount}</td>
                         <td>{row.avgDurationSeconds ?? "-"}</td>
                         <td>{row.teamAvgDurationSeconds ?? "-"}</td>
+                        <td>{row.relativeSpeedIndex?.toFixed(2) ?? "-"}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -323,6 +444,40 @@ export function ReportsScreen() {
               <Card style={styles.throughputCard}>
                 <h2 style={styles.sectionTitle}>Série temporal</h2>
                 <TrendChart data={operatorReport.timeSeries} xKey="date" yKey="completedCount" variant="line" dateTimeAxis />
+              </Card>
+
+              <Card className="table-wrapper">
+                <h2 style={styles.sectionTitle}>Itens do período</h2>
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th>Produto</th>
+                      <th>Resultado</th>
+                      <th>Início</th>
+                      <th>Conclusão</th>
+                      <th>Duração (s)</th>
+                      <th>Observação do problema</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(reportItems ?? []).map((item) => (
+                      <tr key={item.workLogId}>
+                        <td style={styles.strong}>{item.productName ?? "(sem produto)"}</td>
+                        <td>{item.outcome ? (OUTCOME_LABELS[item.outcome] ?? item.outcome) : "Em andamento"}</td>
+                        <td>{new Date(item.startedAt).toLocaleString()}</td>
+                        <td>{item.completedAt ? new Date(item.completedAt).toLocaleString() : "-"}</td>
+                        <td>{item.durationSeconds ?? "-"}</td>
+                        <td>{item.problemNote ?? "-"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                <PaginationBar
+                  page={reportItemsPage}
+                  total={reportItemsTotal}
+                  onChange={setReportItemsPage}
+                  testIdPrefix="report-items-page"
+                />
               </Card>
             </>
           ) : null}
@@ -355,4 +510,6 @@ const styles: Record<string, React.CSSProperties> = {
   statCard: { padding: 16, minWidth: 160, display: "flex", flexDirection: "column", gap: 6 },
   statLabel: { ...typography.label, color: colors.textMuted },
   statValue: { ...typography.sectionTitle, color: colors.secondary },
+  paginationBar: { display: "flex", alignItems: "center", justifyContent: "center", gap: 16, padding: "12px 0 0" },
+  paginationLabel: { ...typography.label, color: colors.textMuted },
 };

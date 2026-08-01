@@ -5,6 +5,7 @@ import type {
   ThroughputQuery,
   ThroughputPoint,
   OperatorReport,
+  OperatorReportItem,
   ExportQuery,
 } from "@catavento/contracts/analytics";
 import type { PaginationQuery } from "@catavento/contracts/common";
@@ -29,6 +30,13 @@ export function createAnalyticsApi(client: ApiClient) {
 
     operatorReport(operatorId: string, params: AnalyticsPeriodQuery): Promise<OperatorReport> {
       return client.request(`/admin/reports/operator/${operatorId}${buildQueryString(params)}`);
+    },
+
+    operatorReportItems(
+      operatorId: string,
+      params: AnalyticsPeriodQuery & Partial<PaginationQuery>
+    ): Promise<Paginated<OperatorReportItem>> {
+      return client.request(`/admin/reports/operator/${operatorId}/items${buildQueryString(params)}`);
     },
 
     export(params: ExportQuery): Promise<Blob> {

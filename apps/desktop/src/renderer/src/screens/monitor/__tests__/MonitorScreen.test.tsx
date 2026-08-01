@@ -30,11 +30,17 @@ function controllableStream() {
   };
 }
 
-function buildFetchMock(sse: ReturnType<typeof controllableStream>) {
+function buildFetchMock(
+  sse: ReturnType<typeof controllableStream>,
+  onlineOperators: Array<{ operatorId: string; displayName: string }> = []
+) {
   return vi.fn((input: RequestInfo | URL) => {
     const url = String(input);
     if (url.includes("/admin/stream")) {
       return Promise.resolve({ ok: true, status: 200, body: sse.stream } as unknown as Response);
+    }
+    if (url.includes("/admin/monitor/online-operators")) {
+      return Promise.resolve(jsonResponse(200, { items: onlineOperators }));
     }
     if (url.includes("/admin/queue")) {
       return Promise.resolve(jsonResponse(200, { items: [], total: 4, page: 1, pageSize: 1 }));
@@ -90,6 +96,15 @@ describe("MonitorScreen", () => {
 
     expect(await screen.findByText("7")).toBeTruthy();
     expect(await screen.findByText("Item atribuído a Fulano")).toBeTruthy();
+  });
+
+  it("hidrata o snapshot inicial de operadores online, sem depender de eventos ao vivo", async () => {
+    const sse = controllableStream();
+    renderScreen(buildFetchMock(sse, [{ operatorId: "op-1", displayName: "Fulano" }]));
+
+    await screen.findByText("4");
+    await waitFor(() => expect(screen.getByTestId("online-count-value").textContent).toBe("1"));
+    expect(await screen.findByText("Fulano")).toBeTruthy();
   });
 
   it("operator_online mostra o operador na lista de online, operator_offline remove", async () => {

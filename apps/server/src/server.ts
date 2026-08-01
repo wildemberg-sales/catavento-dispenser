@@ -7,6 +7,9 @@ import { buildApp } from "./app.js";
 import { registerAbandonmentJob } from "./modules/queue/abandonment.job.js";
 import { queueRepository } from "./modules/queue/queue.repository.js";
 import { createStorage } from "./lib/storage/index.js";
+import { registerOnlineOperatorsSweepJob } from "./modules/monitor/online-operators-sweep.job.js";
+import { onlineOperatorsStore } from "./modules/monitor/online-operators.store.js";
+import { monitorBus } from "./lib/monitor-bus.js";
 
 // Carrega o .env da raiz do monorepo — funciona independente do cwd de onde
 // o processo foi iniciado (ex.: `pnpm --filter @catavento/server dev` roda
@@ -25,6 +28,13 @@ async function main() {
     intervalMs: config.ABANDONMENT_CHECK_INTERVAL_MS,
     timeoutMinutes: config.ABANDONMENT_TIMEOUT_MINUTES,
     abandonStale: (timeoutMinutes) => queueRepository(db).abandonStale(timeoutMinutes),
+  });
+
+  registerOnlineOperatorsSweepJob(app, {
+    intervalMs: config.OPERATOR_ONLINE_SWEEP_INTERVAL_MS,
+    timeoutMs: config.OPERATOR_ONLINE_TIMEOUT_MINUTES * 60_000,
+    sweepStale: (timeoutMs) => onlineOperatorsStore.sweepStale(timeoutMs),
+    onStale: (operatorId) => monitorBus.publish({ type: "operator_offline", payload: { operatorId } }),
   });
 
   await app.listen({ port: config.PORT, host: "0.0.0.0" });

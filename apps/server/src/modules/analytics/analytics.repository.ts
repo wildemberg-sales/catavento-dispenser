@@ -25,6 +25,17 @@ export type ProductAnalyticsRowRaw = {
   distinctOperators: number;
 };
 
+export type OperatorReportItemRaw = {
+  workLogId: string;
+  queueItemId: string;
+  productName: string | null;
+  outcome: string | null;
+  startedAt: string;
+  completedAt: string | null;
+  durationSeconds: number | null;
+  problemNote: string | null;
+};
+
 export function analyticsRepository(db: DbInstance) {
   return {
     async getWeightedRelativeSpeedScores(from: string, to: string): Promise<Map<string, number>> {
@@ -315,6 +326,56 @@ export function analyticsRepository(db: DbInstance) {
         inProgressCount: Number(row.in_progress_count),
         avgDurationSeconds: row.avg_duration_seconds === null ? null : Number(row.avg_duration_seconds),
       };
+    },
+
+    // O relatório de operador (Seção 6.6) só expunha agregados — nenhum
+    // lugar mostrava os itens individuais nem o problem_note que o operador
+    // escreve ao marcar um item como "problem". Sem isso, um admin via
+    // "3 problemas" no card e não tinha como saber qual item nem por quê.
+    async getOperatorReportItems(
+      operatorId: string,
+      from: string,
+      to: string,
+      pagination: { page: number; pageSize: number }
+    ): Promise<{ items: OperatorReportItemRaw[]; total: number }> {
+      const countResult = await db.execute(sql`
+        SELECT COUNT(*) AS total
+        FROM work_logs wl
+        WHERE wl.operator_id = ${operatorId} AND wl.started_at BETWEEN ${from} AND ${to}
+      `);
+      const total = Number((countResult.rows[0] as Record<string, unknown>)?.total ?? 0);
+
+      const offset = (pagination.page - 1) * pagination.pageSize;
+      const result = await db.execute(sql`
+        SELECT
+          wl.id,
+          wl.queue_item_id,
+          p.name AS product_name,
+          wl.outcome,
+          wl.started_at,
+          wl.completed_at,
+          wl.duration_seconds,
+          wl.problem_note
+        FROM work_logs wl
+        JOIN queue_items qi ON qi.id = wl.queue_item_id
+        LEFT JOIN products p ON p.id = qi.product_id
+        WHERE wl.operator_id = ${operatorId} AND wl.started_at BETWEEN ${from} AND ${to}
+        ORDER BY wl.started_at DESC
+        LIMIT ${pagination.pageSize} OFFSET ${offset}
+      `);
+
+      const items = (result.rows as Array<Record<string, unknown>>).map((row) => ({
+        workLogId: row.id as string,
+        queueItemId: row.queue_item_id as string,
+        productName: row.product_name === null ? null : (row.product_name as string),
+        outcome: row.outcome === null ? null : (row.outcome as string),
+        startedAt: new Date(row.started_at as string | Date).toISOString(),
+        completedAt: row.completed_at === null ? null : new Date(row.completed_at as string | Date).toISOString(),
+        durationSeconds: row.duration_seconds === null ? null : Number(row.duration_seconds),
+        problemNote: row.problem_note === null ? null : (row.problem_note as string),
+      }));
+
+      return { items, total };
     },
 
     async getDailyTimeSeries(

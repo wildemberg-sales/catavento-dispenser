@@ -43,7 +43,9 @@ export function queueRepository(db: DbInstance) {
             SELECT id
             FROM queue_items
             WHERE status = 'pending'
-            ORDER BY (product_id IS NULL) ASC, priority DESC, sequence ASC
+            ORDER BY (product_id IS NULL) ASC,
+                     (priority + LEAST(EXTRACT(EPOCH FROM (now() - created_at)) / 3600.0, 5)) DESC,
+                     sequence ASC
             FOR UPDATE SKIP LOCKED
             LIMIT 1
           )
@@ -129,6 +131,35 @@ export function queueRepository(db: DbInstance) {
           .where(inArray(schema.queueItems.id, queueItemIds));
 
         return queueItemIds.length;
+      });
+    },
+
+    // Libera o item ativo do operador imediatamente no logout, em vez de
+    // esperar o timeout de abandono (Seção 5.2) rodar — sem isso, um item
+    // ficava preso em in_progress por até ABANDONMENT_TIMEOUT_MINUTES depois
+    // do operador sair de propósito. Não depende do timeout: libera sempre
+    // que houver um work_log ativo, não importa há quanto tempo foi aberto.
+    async releaseActiveItemForOperator(operatorId: string): Promise<boolean> {
+      return db.transaction(async (tx) => {
+        const [activeLog] = await tx
+          .select()
+          .from(schema.workLogs)
+          .where(and(eq(schema.workLogs.operatorId, operatorId), isNull(schema.workLogs.completedAt)));
+        if (!activeLog) {
+          return false;
+        }
+
+        await tx
+          .update(schema.workLogs)
+          .set({ completedAt: new Date(), outcome: "abandoned" })
+          .where(eq(schema.workLogs.id, activeLog.id));
+
+        await tx
+          .update(schema.queueItems)
+          .set({ status: "pending", updatedAt: new Date() })
+          .where(eq(schema.queueItems.id, activeLog.queueItemId));
+
+        return true;
       });
     },
 

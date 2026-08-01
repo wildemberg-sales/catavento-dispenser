@@ -37,6 +37,14 @@ export function QueueManagementScreen() {
   const [rules, setRules] = useState<PriorityRule[]>(SOURCES.map((source) => ({ source, priority: 0, isActive: true })));
   const [rulesMessage, setRulesMessage] = useState<string | null>(null);
 
+  // Antes só existia PUT — o editor sempre abria zerado, sem mostrar o que
+  // já estava salvo, então editar uma única fonte arriscava sobrescrever as
+  // outras com os valores padrão em vez dos valores reais (Tarefa #76).
+  useEffect(() => {
+    adminQueueApi.getPriorityRules().then((result) => setRules(result.rules));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [adminQueueApi]);
+
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   function fetchPage(targetPage: number) {
@@ -245,10 +253,7 @@ export function QueueManagementScreen() {
 
       <Card style={styles.rulesSection}>
         <h2 style={styles.sectionTitle}>🎯 Regras de prioridade</h2>
-        <p style={styles.small}>
-          Defina a prioridade de cada fonte (maior valor é atendido primeiro). Não é possível consultar as regras
-          atualmente salvas — apenas sobrescrevê-las.
-        </p>
+        <p style={styles.small}>Defina a prioridade de cada fonte (maior valor é atendido primeiro).</p>
         <div style={styles.rulesGrid}>
           {rules.map((rule) => (
             <div key={rule.source} style={styles.ruleRow}>

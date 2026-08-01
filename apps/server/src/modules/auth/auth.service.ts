@@ -4,6 +4,8 @@ import type { AuthUser, TokenPair } from "@catavento/contracts/auth";
 import type { UsersRepository } from "../users/users.repository.js";
 import type { AuthRepository } from "./auth.repository.js";
 import type { MonitorBus } from "../../lib/monitor-bus.js";
+import type { OnlineOperatorsStore } from "../monitor/online-operators.store.js";
+import type { QueueRepository } from "../queue/queue.repository.js";
 import { verifyPassword } from "./password.js";
 import { AccountDisabledError, InvalidCredentialsError, InvalidRefreshTokenError } from "../../lib/errors.js";
 
@@ -38,11 +40,18 @@ export function authService(deps: {
   usersRepo: UsersRepository;
   authRepo: AuthRepository;
   bus: MonitorBus;
+  onlineStore: OnlineOperatorsStore;
+  queueRepo: Pick<QueueRepository, "releaseActiveItemForOperator" | "countPending">;
 }) {
-  const { app, usersRepo, authRepo, bus } = deps;
+  const { app, usersRepo, authRepo, bus, onlineStore, queueRepo } = deps;
 
   async function issueTokenPair(user: UserRow): Promise<TokenPair> {
-    const accessToken = app.jwt.sign({ sub: user.id, role: user.role, username: user.username });
+    const accessToken = app.jwt.sign({
+      sub: user.id,
+      role: user.role,
+      username: user.username,
+      displayName: user.displayName,
+    });
 
     const jti = randomUUID();
     const refreshToken = refreshJwt(app).sign({ sub: user.id, jti });
@@ -72,6 +81,7 @@ export function authService(deps: {
 
       if (user.role === "operator") {
         bus.publish({ type: "operator_online", payload: { operatorId: user.id } });
+        onlineStore.markOnline(user.id, user.displayName);
       }
 
       return issueTokenPair(user);
@@ -102,11 +112,36 @@ export function authService(deps: {
       const stored = await authRepo.findActiveRefreshToken(refreshToken);
       await authRepo.revokeRefreshToken(refreshToken);
 
-      if (stored) {
-        const user = await usersRepo.findById(stored.userId);
-        if (user?.role === "operator") {
-          bus.publish({ type: "operator_offline", payload: { operatorId: user.id } });
-        }
+      // O bug original só publicava operator_offline quando `stored` existia
+      // (token ainda ativo no banco) — um refresh token já expirado ou
+      // revogado (ex.: sessão antiga, ou logout chamado duas vezes) fazia o
+      // operador ficar "online" pra sempre no Monitor, mesmo tendo saído de
+      // verdade. `decode` (não `verify`) funciona mesmo pra um token expirado
+      // — só falha silenciosamente pra lixo/malformado, preservando o
+      // comportamento de não publicar nada nesse caso.
+      let decoded: { sub: string } | null = null;
+      try {
+        decoded = refreshJwt(app).decode<{ sub: string }>(refreshToken);
+      } catch {
+        // token de lixo/malformado (nem chega a ter o formato de um JWT) —
+        // mesmo comportamento de antes: não publica nada.
+      }
+      const userId = stored?.userId ?? decoded?.sub;
+      if (!userId) return;
+
+      const user = await usersRepo.findById(userId);
+      if (user?.role !== "operator") return;
+
+      bus.publish({ type: "operator_offline", payload: { operatorId: user.id } });
+      onlineStore.markOffline(user.id);
+
+      // Libera o item que o operador estava montando em vez de deixá-lo
+      // preso até o timeout de abandono — ver o comentário em
+      // releaseActiveItemForOperator (queue.repository.ts).
+      const released = await queueRepo.releaseActiveItemForOperator(user.id);
+      if (released) {
+        const queueSize = await queueRepo.countPending();
+        bus.publish({ type: "queue_size_changed", payload: { queueSize } });
       }
     },
   };

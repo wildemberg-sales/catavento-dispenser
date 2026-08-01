@@ -13,7 +13,8 @@
     "./common": "./src/common/index.ts",
     "./imports": "./src/imports/index.ts",
     "./products": "./src/products/index.ts",
-    "./analytics": "./src/analytics/index.ts"
+    "./analytics": "./src/analytics/index.ts",
+    "./monitor": "./src/monitor/index.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

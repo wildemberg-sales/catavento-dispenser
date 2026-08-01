@@ -30,6 +30,26 @@ const pendingItem = {
 const problemItem = { ...pendingItem, id: "item-2", externalRef: "ML-2", status: "problem" };
 const completedItem = { ...pendingItem, id: "item-3", externalRef: "ML-3", status: "completed" };
 
+const DEFAULT_RULES = [
+  { source: "mercado_livre", priority: 2, isActive: true },
+  { source: "shopee", priority: 1, isActive: true },
+  { source: "ebay", priority: 0, isActive: true },
+];
+
+// A tela busca as regras de prioridade atuais (GET) ao montar, além da
+// listagem de itens — sem esse desvio, um mock genérico (mockResolvedValue
+// único pra qualquer URL) faria o GET /admin/queue/rules receber o formato
+// de resposta da listagem em vez de `{ rules }`, quebrando `rules.map`.
+function withRulesMock(fetchImpl: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>) {
+  return vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input);
+    if (url.endsWith("/admin/queue/rules") && (init?.method ?? "GET") === "GET") {
+      return Promise.resolve(jsonResponse(200, { rules: DEFAULT_RULES }));
+    }
+    return fetchImpl(input, init);
+  });
+}
+
 function renderScreen(fetchMock: typeof fetch) {
   return render(
     <AuthProvider baseUrl="http://localhost:3000" fetchImpl={fetchMock} secureStore={secureStoreMock}>
@@ -42,9 +62,7 @@ function renderScreen(fetchMock: typeof fetch) {
 
 describe("QueueManagementScreen", () => {
   it("lista os itens da fila com status", async () => {
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValue(jsonResponse(200, { items: [pendingItem], total: 1, page: 1, pageSize: 20 }));
+    const fetchMock = withRulesMock(() => Promise.resolve(jsonResponse(200, { items: [pendingItem], total: 1, page: 1, pageSize: 20 })));
     renderScreen(fetchMock);
 
     expect(await screen.findByText("ML-1")).toBeTruthy();
@@ -67,9 +85,7 @@ describe("QueueManagementScreen", () => {
         createdAt: new Date(2026, 2, 5, 9, 7, 3).toISOString(),
       },
     };
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValue(jsonResponse(200, { items: [linkedItem], total: 1, page: 1, pageSize: 100 }));
+    const fetchMock = withRulesMock(() => Promise.resolve(jsonResponse(200, { items: [linkedItem], total: 1, page: 1, pageSize: 100 })));
     renderScreen(fetchMock);
 
     await screen.findByText("ML-LINKED");
@@ -78,9 +94,7 @@ describe("QueueManagementScreen", () => {
   });
 
   it("mostra '-' na data de cadastro quando o item não tem produto vinculado", async () => {
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValue(jsonResponse(200, { items: [pendingItem], total: 1, page: 1, pageSize: 20 }));
+    const fetchMock = withRulesMock(() => Promise.resolve(jsonResponse(200, { items: [pendingItem], total: 1, page: 1, pageSize: 20 })));
     renderScreen(fetchMock);
 
     await screen.findByText("ML-1");
@@ -88,9 +102,7 @@ describe("QueueManagementScreen", () => {
   });
 
   it("mudar um filtro não busca imediatamente — espera o debounce", async () => {
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValue(jsonResponse(200, { items: [pendingItem], total: 1, page: 1, pageSize: 100 }));
+    const fetchMock = withRulesMock(() => Promise.resolve(jsonResponse(200, { items: [pendingItem], total: 1, page: 1, pageSize: 100 })));
     renderScreen(fetchMock);
     await waitFor(() => expect(screen.getByTestId("status-filter")).toBeTruthy());
     const callsBefore = fetchMock.mock.calls.length;
@@ -106,9 +118,7 @@ describe("QueueManagementScreen", () => {
   });
 
   it("aplica status, fonte, data e busca de texto juntos após o debounce", async () => {
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValue(jsonResponse(200, { items: [pendingItem], total: 1, page: 1, pageSize: 100 }));
+    const fetchMock = withRulesMock(() => Promise.resolve(jsonResponse(200, { items: [pendingItem], total: 1, page: 1, pageSize: 100 })));
     renderScreen(fetchMock);
     await waitFor(() => expect(screen.getByTestId("status-filter")).toBeTruthy());
 
@@ -128,9 +138,7 @@ describe("QueueManagementScreen", () => {
   });
 
   it("data em branco não envia from/to (todas as datas)", async () => {
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValue(jsonResponse(200, { items: [pendingItem], total: 1, page: 1, pageSize: 100 }));
+    const fetchMock = withRulesMock(() => Promise.resolve(jsonResponse(200, { items: [pendingItem], total: 1, page: 1, pageSize: 100 })));
     renderScreen(fetchMock);
     await waitFor(() => expect(screen.getByTestId("date-filter")).toBeTruthy());
 
@@ -146,18 +154,14 @@ describe("QueueManagementScreen", () => {
   });
 
   it("sempre busca com o pageSize máximo permitido (100)", async () => {
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValue(jsonResponse(200, { items: [pendingItem], total: 1, page: 1, pageSize: 100 }));
+    const fetchMock = withRulesMock(() => Promise.resolve(jsonResponse(200, { items: [pendingItem], total: 1, page: 1, pageSize: 100 })));
     renderScreen(fetchMock);
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining("pageSize=100"), expect.anything()));
   });
 
   it("mudar um filtro depois de paginar volta pra página 1", async () => {
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValue(jsonResponse(200, { items: [pendingItem], total: 250, page: 1, pageSize: 100 }));
+    const fetchMock = withRulesMock(() => Promise.resolve(jsonResponse(200, { items: [pendingItem], total: 250, page: 1, pageSize: 100 })));
     renderScreen(fetchMock);
     await waitFor(() => expect(screen.getByTestId("page-next")).toBeTruthy());
 
@@ -173,9 +177,7 @@ describe("QueueManagementScreen", () => {
   });
 
   it("paginação: 'Próxima' avança de página, 'Anterior' fica desabilitado na primeira página", async () => {
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValue(jsonResponse(200, { items: [pendingItem], total: 250, page: 1, pageSize: 100 }));
+    const fetchMock = withRulesMock(() => Promise.resolve(jsonResponse(200, { items: [pendingItem], total: 250, page: 1, pageSize: 100 })));
     renderScreen(fetchMock);
     await waitFor(() => expect(screen.getByTestId("page-next")).toBeTruthy());
 
@@ -188,9 +190,7 @@ describe("QueueManagementScreen", () => {
   });
 
   it("desabilita 'Próxima' na última página", async () => {
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValue(jsonResponse(200, { items: [pendingItem], total: 50, page: 1, pageSize: 100 }));
+    const fetchMock = withRulesMock(() => Promise.resolve(jsonResponse(200, { items: [pendingItem], total: 50, page: 1, pageSize: 100 })));
     renderScreen(fetchMock);
 
     await waitFor(() => expect(screen.getByTestId("page-next")).toBeDisabled());
@@ -198,8 +198,8 @@ describe("QueueManagementScreen", () => {
   });
 
   it("mostra 'Repor na fila' apenas para itens cancelled/problem, e 'Cancelar' para tudo exceto completed", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(
-      jsonResponse(200, { items: [pendingItem, problemItem, completedItem], total: 3, page: 1, pageSize: 20 })
+    const fetchMock = withRulesMock(() =>
+      Promise.resolve(jsonResponse(200, { items: [pendingItem, problemItem, completedItem], total: 3, page: 1, pageSize: 20 }))
     );
     renderScreen(fetchMock);
     await waitFor(() => expect(screen.getByText("ML-1")).toBeTruthy());
@@ -216,6 +216,9 @@ describe("QueueManagementScreen", () => {
       const url = String(input);
       if (init?.method === "POST" && url.endsWith("/admin/queue/items/item-2/requeue")) {
         return Promise.resolve(jsonResponse(200, { ok: true }));
+      }
+      if (url.endsWith("/admin/queue/rules")) {
+        return Promise.resolve(jsonResponse(200, { rules: DEFAULT_RULES }));
       }
       return Promise.resolve(jsonResponse(200, { items: [problemItem], total: 1, page: 1, pageSize: 20 }));
     });
@@ -237,6 +240,9 @@ describe("QueueManagementScreen", () => {
       const url = String(input);
       if (init?.method === "POST" && url.endsWith("/admin/queue/items/item-1/cancel")) {
         return Promise.resolve(jsonResponse(200, { ok: true }));
+      }
+      if (url.endsWith("/admin/queue/rules")) {
+        return Promise.resolve(jsonResponse(200, { rules: DEFAULT_RULES }));
       }
       return Promise.resolve(jsonResponse(200, { items: [pendingItem], total: 1, page: 1, pageSize: 20 }));
     });
@@ -267,6 +273,9 @@ describe("QueueManagementScreen", () => {
           })
         );
       }
+      if (url.endsWith("/admin/queue/rules")) {
+        return Promise.resolve(jsonResponse(200, { rules: DEFAULT_RULES }));
+      }
       return Promise.resolve(jsonResponse(200, { items: [], total: 0, page: 1, pageSize: 20 }));
     });
     renderScreen(fetchMock);
@@ -276,5 +285,28 @@ describe("QueueManagementScreen", () => {
     fireEvent.click(screen.getByTestId("priority-save"));
 
     expect(await screen.findByText("Regras de prioridade atualizadas.")).toBeTruthy();
+  });
+
+  it("pré-preenche as regras de prioridade com o que já está salvo no servidor", async () => {
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/admin/queue/rules")) {
+        return Promise.resolve(
+          jsonResponse(200, {
+            rules: [
+              { source: "mercado_livre", priority: 7, isActive: true },
+              { source: "shopee", priority: 3, isActive: false },
+              { source: "ebay", priority: 1, isActive: true },
+            ],
+          })
+        );
+      }
+      return Promise.resolve(jsonResponse(200, { items: [], total: 0, page: 1, pageSize: 20 }));
+    });
+    renderScreen(fetchMock);
+
+    await waitFor(() => expect(screen.getByTestId("priority-mercado_livre")).toHaveValue(7));
+    expect(screen.getByTestId("priority-shopee")).toHaveValue(3);
+    expect(screen.getByTestId("priority-ebay")).toHaveValue(1);
   });
 });

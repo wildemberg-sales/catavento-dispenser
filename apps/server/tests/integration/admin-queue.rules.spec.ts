@@ -134,3 +134,92 @@ describe("PUT /admin/queue/rules", () => {
     void admin;
   });
 });
+
+describe("GET /admin/queue/rules", () => {
+  let ctx: TestDbContext;
+
+  beforeAll(async () => {
+    ctx = await startTestDb();
+  }, 60000);
+
+  afterAll(async () => {
+    await stopTestDb(ctx);
+  });
+
+  beforeEach(async () => {
+    await truncateAll(ctx.db);
+    await setPriorityRules(ctx.db, DEFAULT_PRIORITY_RULES);
+  });
+
+  async function loginAs(app: Awaited<ReturnType<typeof buildTestApp>>, username: string) {
+    const response = await app.inject({
+      method: "POST",
+      url: "/auth/login",
+      payload: { username, password: "senha-de-teste-123" },
+    });
+    return response.json().accessToken as string;
+  }
+
+  it("devolve as 3 regras atuais — antes só existia PUT, sem forma de ler o que já estava salvo", async () => {
+    await createUser(ctx.db, { username: "admin-le-regras", role: "admin" });
+    const app = await buildTestApp(ctx.db);
+    const token = await loginAs(app, "admin-le-regras");
+
+    const response = await app.inject({
+      method: "GET",
+      url: "/admin/queue/rules",
+      headers: { authorization: `Bearer ${token}` },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().rules).toHaveLength(3);
+    await app.close();
+  });
+
+  it("reflete uma atualização feita via PUT", async () => {
+    await createUser(ctx.db, { username: "admin-le-regras-2", role: "admin" });
+    const app = await buildTestApp(ctx.db);
+    const token = await loginAs(app, "admin-le-regras-2");
+
+    await app.inject({
+      method: "PUT",
+      url: "/admin/queue/rules",
+      headers: { authorization: `Bearer ${token}` },
+      payload: {
+        rules: [
+          { source: "mercado_livre", priority: 7, isActive: true },
+          { source: "shopee", priority: 2, isActive: false },
+          { source: "ebay", priority: 0, isActive: true },
+        ],
+      },
+    });
+
+    const response = await app.inject({
+      method: "GET",
+      url: "/admin/queue/rules",
+      headers: { authorization: `Bearer ${token}` },
+    });
+
+    const bySource = Object.fromEntries(
+      response.json().rules.map((r: { source: string; priority: number; isActive: boolean }) => [r.source, r])
+    );
+    expect(bySource.mercado_livre).toEqual({ source: "mercado_livre", priority: 7, isActive: true });
+    expect(bySource.shopee).toEqual({ source: "shopee", priority: 2, isActive: false });
+    await app.close();
+  });
+
+  it("retorna 403 para operador", async () => {
+    await createUser(ctx.db, { username: "op-le-regras", role: "operator" });
+    const app = await buildTestApp(ctx.db);
+    const token = await loginAs(app, "op-le-regras");
+
+    const response = await app.inject({
+      method: "GET",
+      url: "/admin/queue/rules",
+      headers: { authorization: `Bearer ${token}` },
+    });
+
+    expect(response.statusCode).toBe(403);
+    await app.close();
+  });
+});

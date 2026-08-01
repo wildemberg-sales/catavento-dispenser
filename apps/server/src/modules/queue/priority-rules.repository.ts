@@ -9,6 +9,14 @@ export function priorityRulesRepository(db: DbInstance) {
       return new Map(rows.map((row) => [row.source, row.priority]));
     },
 
+    // Antes só existia `replaceAll` (PUT) — o editor de regras no desktop não
+    // tinha como mostrar os valores atuais antes de sobrescrever, só
+    // confirmar o que acabou de salvar.
+    async findAll(): Promise<PriorityRule[]> {
+      const rows = await db.select().from(schema.queuePriorityRules);
+      return rows.map((row) => ({ source: row.source, priority: row.priority, isActive: row.isActive }));
+    },
+
     async replaceAll(rules: PriorityRule[]): Promise<PriorityRule[]> {
       await db.transaction(async (tx) => {
         for (const rule of rules) {

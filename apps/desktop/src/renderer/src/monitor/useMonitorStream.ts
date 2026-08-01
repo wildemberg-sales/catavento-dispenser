@@ -32,21 +32,25 @@ export function useMonitorStream(options: {
   baseUrl: string;
   getAccessToken: () => string | null;
   onEvent: (event: MonitorEvent) => void;
+  onOpen?: () => void;
   fetchImpl?: typeof fetch;
   backoffMs?: number[];
 }): void {
   const { baseUrl, fetchImpl, backoffMs } = options;
 
-  // onEvent/getAccessToken normalmente mudam de identidade a cada render do
-  // componente que chama este hook (novas closures capturando estado fresco,
-  // como o mapa de nomes de operador em MonitorScreen). A conexão SSE em si
-  // não deve ser derrubada e reaberta por causa disso — só quando `baseUrl`
-  // muda — então sempre chamamos a versão mais recente via ref, em vez de
-  // fechar sobre os valores de quando o efeito rodou pela primeira vez.
+  // onEvent/getAccessToken/onOpen normalmente mudam de identidade a cada
+  // render do componente que chama este hook (novas closures capturando
+  // estado fresco, como o mapa de nomes de operador em MonitorScreen). A
+  // conexão SSE em si não deve ser derrubada e reaberta por causa disso — só
+  // quando `baseUrl` muda — então sempre chamamos a versão mais recente via
+  // ref, em vez de fechar sobre os valores de quando o efeito rodou pela
+  // primeira vez.
   const onEventRef = useRef(options.onEvent);
+  const onOpenRef = useRef(options.onOpen);
   const getAccessTokenRef = useRef(options.getAccessToken);
   useEffect(() => {
     onEventRef.current = options.onEvent;
+    onOpenRef.current = options.onOpen;
     getAccessTokenRef.current = options.getAccessToken;
   });
 
@@ -65,6 +69,12 @@ export function useMonitorStream(options: {
       if (!response.ok || !response.body) {
         throw new Error(`monitor stream indisponível: ${response.status}`);
       }
+
+      // Dispara em toda conexão bem-sucedida (a primeira e cada reconexão) —
+      // é o que permite ao chamador ressincronizar estado (ex.: snapshot de
+      // operadores online) depois de um gap onde eventos podem ter sido
+      // perdidos, sem precisar reabrir o app inteiro.
+      onOpenRef.current?.();
 
       const reader = response.body.getReader();
       const decoder = new TextDecoder();

@@ -106,6 +106,18 @@ export const operatorReportSchema = z.object({
 });
 export type OperatorReport = z.infer<typeof operatorReportSchema>;
 
+export const operatorReportItemSchema = z.object({
+  workLogId: z.string().uuid(),
+  queueItemId: z.string().uuid(),
+  productName: z.string().nullable(),
+  outcome: z.enum(["completed", "abandoned", "problem"]).nullable(),
+  startedAt: z.string().datetime(),
+  completedAt: z.string().datetime().nullable(),
+  durationSeconds: z.number().int().nullable(),
+  problemNote: z.string().nullable(),
+});
+export type OperatorReportItem = z.infer<typeof operatorReportItemSchema>;
+
 export const exportQuerySchema = z.object({
   format: z.enum(["csv", "xlsx"]),
   report: z.enum(["by-operator", "by-product", "throughput", "operator-report"]),

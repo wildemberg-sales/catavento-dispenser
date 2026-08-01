@@ -4,8 +4,8 @@ import type { Role } from "@catavento/contracts/users";
 export function requireAuth(app: FastifyInstance) {
   return async (req: FastifyRequest, _reply: FastifyReply) => {
     try {
-      const payload = await req.jwtVerify<{ sub: string; role: Role; username: string }>();
-      req.authUser = { id: payload.sub, role: payload.role, username: payload.username };
+      const payload = await req.jwtVerify<{ sub: string; role: Role; username: string; displayName: string }>();
+      req.authUser = { id: payload.sub, role: payload.role, username: payload.username, displayName: payload.displayName };
     } catch {
       throw app.httpErrors.unauthorized("Token inválido ou expirado.");
     }

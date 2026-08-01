@@ -58,6 +58,17 @@ export default async function analyticsRoutes(app: FastifyInstance) {
     }
   );
 
+  app.get<{ Params: { id: string } }>(
+    "/reports/operator/:id/items",
+    { preHandler: [requireAuth(app), requireRole("admin")] },
+    async (req, reply) => {
+      const { from, to } = analyticsPeriodQuerySchema.parse(req.query);
+      const pagination = paginationQuerySchema.parse(req.query);
+      const result = await service.getOperatorReportItems(req.params.id, from, to, pagination);
+      return reply.status(200).send(result);
+    }
+  );
+
   app.get(
     "/analytics/export",
     { preHandler: [requireAuth(app), requireRole("admin")] },
