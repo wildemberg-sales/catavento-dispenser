@@ -1,9 +1,9 @@
 import React from "react";
 import { describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor, fireEvent } from "@testing-library/react";
-import { MemoryRouter, Routes, Route } from "react-router-dom";
+import { Link, MemoryRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "../../../auth/AuthContext";
-import { ProductForm } from "../ProductForm";
+import { ProductFormRoute } from "../ProductForm";
 
 function jsonResponse(status: number, body: unknown): Response {
   return { ok: status >= 200 && status < 300, status, json: async () => body } as Response;
@@ -27,8 +27,8 @@ function renderScreen(
     <AuthProvider baseUrl="http://localhost:3000" fetchImpl={fetchMock} secureStore={secureStoreMock}>
       <MemoryRouter initialEntries={[entry]}>
         <Routes>
-          <Route path="products/new" element={<ProductForm />} />
-          <Route path="products/:productId/edit" element={<ProductForm />} />
+          <Route path="products/new" element={<ProductFormRoute />} />
+          <Route path="products/:productId/edit" element={<ProductFormRoute />} />
         </Routes>
       </MemoryRouter>
     </AuthProvider>
@@ -161,6 +161,87 @@ describe("ProductForm — criação", () => {
 
     expect(await screen.findByText("Nome do produto é obrigatório.")).toBeTruthy();
   });
+
+  it("permite selecionar fotos antes de criar o produto, mostrando a prévia sem chamar a API", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(201, product()));
+    renderScreen(fetchMock);
+
+    await waitFor(() => expect(screen.getByTestId("upload-image-input")).toBeTruthy());
+    const file = new File(["conteudo"], "capa.png", { type: "image/png" });
+    fireEvent.change(screen.getByTestId("upload-image-input"), { target: { files: [file] } });
+
+    expect(await screen.findByTestId("pending-image-0")).toBeTruthy();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("permite remover uma foto selecionada antes de criar o produto", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(201, product()));
+    renderScreen(fetchMock);
+
+    await waitFor(() => expect(screen.getByTestId("upload-image-input")).toBeTruthy());
+    const file = new File(["conteudo"], "capa.png", { type: "image/png" });
+    fireEvent.change(screen.getByTestId("upload-image-input"), { target: { files: [file] } });
+    await screen.findByTestId("pending-image-0");
+
+    fireEvent.click(screen.getByTestId("remove-pending-image-0"));
+
+    await waitFor(() => expect(screen.queryByTestId("pending-image-0")).toBeNull());
+  });
+
+  it("ao criar, envia as fotos selecionadas com o id do produto recém-criado", async () => {
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (init?.method === "POST" && url.endsWith("/admin/products/")) {
+        return Promise.resolve(jsonResponse(201, product({ id: "prod-novo" })));
+      }
+      if (init?.method === "POST" && url.includes("/admin/products/prod-novo/images")) {
+        return Promise.resolve(jsonResponse(201, { id: "img-1", url: "http://localhost:3000/uploads/capa.png", position: 0 }));
+      }
+      return Promise.resolve(jsonResponse(200, product({ id: "prod-novo" })));
+    });
+    renderScreen(fetchMock);
+
+    await waitFor(() => expect(screen.getByTestId("product-name")).toBeTruthy());
+    fireEvent.change(screen.getByTestId("product-name"), { target: { value: "Bolo Fake Rosa" } });
+    const file = new File(["conteudo"], "capa.png", { type: "image/png" });
+    fireEvent.change(screen.getByTestId("upload-image-input"), { target: { files: [file] } });
+    await screen.findByTestId("pending-image-0");
+
+    fireEvent.click(screen.getByTestId("product-submit"));
+
+    await waitFor(() => {
+      const uploadCall = fetchMock.mock.calls.find(([url]) => (url as string).includes("/admin/products/prod-novo/images"));
+      expect(uploadCall).toBeTruthy();
+    });
+  });
+
+  it("se uma foto falhar ao subir após criar o produto, navega para a edição e mostra um aviso", async () => {
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (init?.method === "POST" && url.endsWith("/admin/products/")) {
+        return Promise.resolve(jsonResponse(201, product({ id: "prod-novo" })));
+      }
+      if (init?.method === "POST" && url.includes("/admin/products/prod-novo/images")) {
+        return Promise.reject(new Error("falha de rede"));
+      }
+      return Promise.resolve(jsonResponse(200, product({ id: "prod-novo" })));
+    });
+    renderScreen(fetchMock);
+
+    await waitFor(() => expect(screen.getByTestId("product-name")).toBeTruthy());
+    fireEvent.change(screen.getByTestId("product-name"), { target: { value: "Bolo Fake Rosa" } });
+    const file = new File(["conteudo"], "capa.png", { type: "image/png" });
+    fireEvent.change(screen.getByTestId("upload-image-input"), { target: { files: [file] } });
+    await screen.findByTestId("pending-image-0");
+
+    fireEvent.click(screen.getByTestId("product-submit"));
+
+    expect(await screen.findByText("1 de 1 fotos não puderam ser enviadas.")).toBeTruthy();
+    // navegou pra tela de edição do produto já criado (recarrega os dados via
+    // GET) em vez de ficar presa na de criação com a foto ainda pendente.
+    await waitFor(() => expect(screen.getByTestId("product-name")).toHaveValue(product().name));
+    expect(screen.queryByTestId("pending-image-0")).toBeNull();
+  });
 });
 
 describe("ProductForm — edição", () => {
@@ -190,12 +271,12 @@ describe("ProductForm — edição", () => {
     });
   });
 
-  it("não mostra a galeria de imagens no modo de criação", async () => {
+  it("no modo de criação mostra a área de seleção de fotos, mas não a galeria (que exige um produto salvo)", async () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(201, product()));
     renderScreen(fetchMock);
 
-    await waitFor(() => expect(screen.getByTestId("product-name")).toBeTruthy());
-    expect(screen.queryByTestId("upload-image-input")).toBeNull();
+    await waitFor(() => expect(screen.getByTestId("upload-image-input")).toBeTruthy());
+    expect(screen.queryByTestId("delete-image-img-a")).toBeNull();
   });
 
   it("mostra as fotos existentes ordenadas por position", async () => {
@@ -306,5 +387,34 @@ describe("ProductForm — edição", () => {
     fireEvent.click(screen.getByTestId("product-submit"));
 
     expect(await screen.findByText("Não foi possível salvar o produto.")).toBeTruthy();
+  });
+});
+
+describe("ProductForm — navegação entre edição e criação", () => {
+  it("ir da edição de um produto direto para 'novo produto' começa com o formulário vazio", async () => {
+    // "products/new" e "products/:productId/edit" renderizam o mesmo
+    // componente na mesma posição da árvore — sem remontar via key
+    // (ProductFormRoute), o React reaproveitava a instância e o nome do
+    // produto anterior continuava aparecendo no formulário "novo".
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, product({ id: "prod-1", name: "Bolo Fake Rosa" })));
+    render(
+      <AuthProvider baseUrl="http://localhost:3000" fetchImpl={fetchMock} secureStore={secureStoreMock}>
+        <MemoryRouter initialEntries={["/products/prod-1/edit"]}>
+          <Link to="/products/new" data-testid="go-new">
+            Novo produto
+          </Link>
+          <Routes>
+            <Route path="products/new" element={<ProductFormRoute />} />
+            <Route path="products/:productId/edit" element={<ProductFormRoute />} />
+          </Routes>
+        </MemoryRouter>
+      </AuthProvider>
+    );
+
+    expect(await screen.findByTestId("product-name")).toHaveValue("Bolo Fake Rosa");
+
+    fireEvent.click(screen.getByTestId("go-new"));
+
+    await waitFor(() => expect(screen.getByTestId("product-name")).toHaveValue(""));
   });
 });

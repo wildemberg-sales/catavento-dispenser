@@ -7,7 +7,7 @@ import { ImportWizard } from "./screens/imports/ImportWizard";
 import { ImportDetailScreen } from "./screens/imports/ImportDetailScreen";
 import { QueueManagementScreen } from "./screens/queue/QueueManagementScreen";
 import { ProductsListScreen } from "./screens/products/ProductsListScreen";
-import { ProductForm } from "./screens/products/ProductForm";
+import { ProductFormRoute } from "./screens/products/ProductForm";
 import { ReconciliationScreen } from "./screens/reconciliation/ReconciliationScreen";
 import { MonitorScreen } from "./screens/monitor/MonitorScreen";
 import { ProblemsScreen } from "./screens/problems/ProblemsScreen";
@@ -51,8 +51,8 @@ function RootRoutes() {
         <Route path="imports/:batchId" element={<ImportDetailScreen />} />
         <Route path="queue" element={<QueueManagementScreen />} />
         <Route path="products" element={<ProductsListScreen />} />
-        <Route path="products/new" element={<ProductForm />} />
-        <Route path="products/:productId/edit" element={<ProductForm />} />
+        <Route path="products/new" element={<ProductFormRoute />} />
+        <Route path="products/:productId/edit" element={<ProductFormRoute />} />
         <Route path="reconciliation" element={<ReconciliationScreen />} />
         <Route path="monitor" element={<MonitorScreen />} />
         <Route path="problems" element={<ProblemsScreen />} />

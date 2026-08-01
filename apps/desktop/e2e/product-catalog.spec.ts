@@ -25,11 +25,17 @@ test("cadastra um produto com foto, itens de montagem e SKU", async () => {
     await window.getByTestId("assembly-item-input").fill("Base de isopor");
     await window.getByTestId("add-assembly-item").click();
     await window.getByTestId("sku-mercado_livre").fill(`SKU-E2E-${runId}`);
+
+    // A foto é selecionada ANTES de criar o produto — sobe pro storage logo
+    // depois do POST de criação ter sucesso (ver ProductForm.tsx), sem
+    // precisar de um passo separado de edição.
+    await window.getByTestId("upload-image-input").setInputFiles(imagePath);
+    await window.getByTestId("pending-image-0").waitFor();
+
     await window.getByTestId("product-submit").click();
 
-    await window.getByText("🧁 Fotos do produto").waitFor();
-
-    await window.getByTestId("upload-image-input").setInputFiles(imagePath);
+    // Confirma que a foto realmente persistiu no servidor (galeria real da
+    // tela de edição, não só a prévia local que já tínhamos antes de criar).
     const deleteButton = window.locator('[data-testid^="delete-image-"]');
     await expect(deleteButton).toBeVisible();
 

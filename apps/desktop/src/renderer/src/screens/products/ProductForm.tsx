@@ -18,10 +18,24 @@ type ProductFormLocationState = {
   prefillName?: string;
   prefillSku?: { source: SourceType; sku: string };
   fromQueueItemId?: string;
+  imageUploadError?: string;
 };
 
 function emptySkuMap(): Record<SourceType, string> {
   return { mercado_livre: "", shopee: "", ebay: "" };
+}
+
+// "products/new" e "products/:productId/edit" renderizam o mesmo
+// <ProductForm /> na mesma posição da árvore de rotas — sem uma key que
+// varie com o que está sendo editado, o React reaproveita a mesma
+// instância ao navegar de uma rota pra outra (ex.: editar o produto A e
+// depois ir para "novo produto"), deixando nome/descrição/fotos do produto
+// anterior visíveis no formulário "vazio". Usar essa rota como `element`
+// (em vez de <ProductForm /> direto) força a remontagem sempre que o
+// productId muda.
+export function ProductFormRoute() {
+  const { productId } = useParams<{ productId?: string }>();
+  return <ProductForm key={productId ?? "new"} />;
 }
 
 export function ProductForm() {
@@ -49,6 +63,34 @@ export function ProductForm() {
   const [error, setError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [imageError, setImageError] = useState<string | null>(null);
+  // Fotos escolhidas antes do produto existir (modo de criação) — não há
+  // como enviá-las pro storage sem um product_id (a tabela product_images
+  // exige a FK), então ficam só na memória do formulário e sobem em lote
+  // logo após o POST de criação ter sucesso.
+  const [pendingImages, setPendingImages] = useState<File[]>([]);
+  const [pendingImagePreviews, setPendingImagePreviews] = useState<string[]>([]);
+
+  useEffect(() => {
+    const urls = pendingImages.map((file) => URL.createObjectURL(file));
+    setPendingImagePreviews(urls);
+    return () => {
+      urls.forEach((url) => URL.revokeObjectURL(url));
+    };
+  }, [pendingImages]);
+
+  // Não dá pra ler prefill.imageUploadError direto num useState inicial: as
+  // rotas "products/new" e "products/:productId/edit" renderizam o mesmo
+  // <ProductForm /> na mesma posição da árvore, então o React reaproveita a
+  // mesma instância do componente ao navegar de uma pra outra (sem
+  // desmontar) — o inicializador do useState só rodaria na primeira
+  // montagem (modo de criação), nunca no momento em que essa mensagem
+  // realmente chega. Um efeito reagindo a location.state cobre os dois
+  // casos: navegação sem desmontar (este) e uma entrada direta na rota de
+  // edição já com esse estado (mount novo).
+  useEffect(() => {
+    const state = location.state as ProductFormLocationState | null;
+    if (state?.imageUploadError) setImageError(state.imageUploadError);
+  }, [location.state]);
 
   useEffect(() => {
     if (!productId) return;
@@ -117,6 +159,15 @@ export function ProductForm() {
     );
   }
 
+  function handleStageImages(files: FileList | null) {
+    if (!files) return;
+    setPendingImages((current) => [...current, ...Array.from(files)]);
+  }
+
+  function handleRemovePendingImage(index: number) {
+    setPendingImages((current) => current.filter((_, i) => i !== index));
+  }
+
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
     setError(null);
@@ -130,7 +181,22 @@ export function ProductForm() {
         if (prefill.fromQueueItemId) {
           await adminQueueApi.link(prefill.fromQueueItemId, { productId: created.id }).catch(() => {});
         }
-        navigate(`/products/${created.id}/edit`);
+        let failedUploads = 0;
+        for (const file of pendingImages) {
+          try {
+            await productsApi.uploadImage(created.id, file);
+          } catch (e) {
+            console.log("DEBUG upload failed", e);
+            failedUploads += 1;
+          }
+        }
+        console.log("DEBUG failedUploads", failedUploads, "pendingImages.length", pendingImages.length);
+        navigate(
+          `/products/${created.id}/edit`,
+          failedUploads > 0
+            ? { state: { imageUploadError: `${failedUploads} de ${pendingImages.length} fotos não puderam ser enviadas.` } }
+            : undefined
+        );
         return;
       }
     } catch (err) {
@@ -256,6 +322,35 @@ export function ProductForm() {
           />
           {imageError ? <p style={styles.error}>{imageError}</p> : null}
         </Card>
+      ) : !isEditing ? (
+        <Card style={styles.galleryCard}>
+          <h2 style={styles.sectionTitle}>🧁 Fotos do produto</h2>
+          <p style={styles.hint}>As fotos são enviadas assim que o produto for criado.</p>
+          {pendingImages.length > 0 ? (
+            <div style={styles.galleryGrid}>
+              {pendingImages.map((file, index) => (
+                <div key={index} style={styles.imageTile} data-testid={`pending-image-${index}`}>
+                  <img src={pendingImagePreviews[index]} alt={file.name} style={styles.imageThumb} />
+                  <button
+                    type="button"
+                    data-testid={`remove-pending-image-${index}`}
+                    className="btn btn-ghost btn-sm"
+                    onClick={() => handleRemovePendingImage(index)}
+                  >
+                    Remover
+                  </button>
+                </div>
+              ))}
+            </div>
+          ) : null}
+          <input
+            data-testid="upload-image-input"
+            type="file"
+            multiple
+            accept="image/jpeg,image/png,image/webp"
+            onChange={(event) => handleStageImages(event.target.files)}
+          />
+        </Card>
       ) : null}
     </div>
   );
@@ -288,6 +383,7 @@ const styles: Record<string, React.CSSProperties> = {
   error: { ...typography.label, color: colors.danger, margin: 0 },
   galleryCard: { padding: 24, maxWidth: 640, display: "flex", flexDirection: "column", gap: 14 },
   sectionTitle: { ...typography.sectionTitle, color: colors.secondary, margin: 0 },
+  hint: { ...typography.small, color: colors.textMuted, margin: 0 },
   galleryGrid: { display: "flex", flexWrap: "wrap", gap: 16 },
   imageTile: { display: "flex", flexDirection: "column", alignItems: "center", gap: 6, width: 96 },
   imageThumb: { width: 96, height: 96, borderRadius: 10, objectFit: "cover" },
