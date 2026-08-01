@@ -6,6 +6,7 @@ import {
   operatorReportSchema,
   productAnalyticsRowSchema,
   throughputBucketSchema,
+  throughputQuerySchema,
 } from "../src/analytics/schemas.js";
 
 describe("analytics schemas", () => {
@@ -19,6 +20,41 @@ describe("analytics schemas", () => {
     const from = new Date("2026-01-01T00:00:00.000Z").toISOString();
     const to = new Date("2026-01-10T00:00:00.000Z").toISOString();
     expect(analyticsPeriodQuerySchema.safeParse({ from, to }).success).toBe(true);
+  });
+
+  it("analyticsPeriodQuerySchema rejeita uma data malformada em 'from'", () => {
+    const result = analyticsPeriodQuerySchema.safeParse({
+      from: "2026-13-45T00:00:00.000Z",
+      to: new Date("2026-01-10T00:00:00.000Z").toISOString(),
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("throughputQuerySchema aceita bucket+período válidos", () => {
+    const result = throughputQuerySchema.safeParse({
+      bucket: "day",
+      from: new Date("2026-01-01T00:00:00.000Z").toISOString(),
+      to: new Date("2026-01-10T00:00:00.000Z").toISOString(),
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("throughputQuerySchema rejeita bucket fora do enum", () => {
+    const result = throughputQuerySchema.safeParse({
+      bucket: "month",
+      from: new Date("2026-01-01T00:00:00.000Z").toISOString(),
+      to: new Date("2026-01-10T00:00:00.000Z").toISOString(),
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("throughputQuerySchema tem seu próprio refine de 'to' posterior a 'from' — não depende do de analyticsPeriodQuerySchema", () => {
+    const result = throughputQuerySchema.safeParse({
+      bucket: "hour",
+      from: new Date("2026-01-10T00:00:00.000Z").toISOString(),
+      to: new Date("2026-01-01T00:00:00.000Z").toISOString(),
+    });
+    expect(result.success).toBe(false);
   });
 
   it("throughputBucketSchema só aceita hour ou day", () => {

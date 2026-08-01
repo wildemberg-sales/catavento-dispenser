@@ -40,4 +40,17 @@ describe("users schemas (admin)", () => {
       expect(result.data.isActive).toBe(false);
     }
   });
+
+  it("listUsersQuerySchema aceita isActive já como um booleano de verdade (não só a string vinda de query param)", () => {
+    const result = listUsersQuerySchema.safeParse({ isActive: false });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.isActive).toBe(false);
+    }
+  });
+
+  it("listUsersQuerySchema combina role inválido com paginação inválida — falha por qualquer um dos dois", () => {
+    expect(listUsersQuerySchema.safeParse({ role: "convidado", page: 0 }).success).toBe(false);
+    expect(listUsersQuerySchema.safeParse({ role: "convidado", pageSize: 101 }).success).toBe(false);
+  });
 });

@@ -3,6 +3,7 @@ import { loginInputSchema } from "../src/auth/schemas.js";
 import {
   adminQueueQuerySchema,
   nextItemResponseSchema,
+  priorityRuleSchema,
   problemItemInputSchema,
   queueItemDtoSchema,
   sourceTypeSchema,
@@ -155,5 +156,25 @@ describe("queue schemas", () => {
     }
     expect(adminQueueQuerySchema.safeParse({}).success).toBe(true);
     expect(adminQueueQuerySchema.safeParse({ status: "invalido" }).success).toBe(false);
+  });
+
+  it("adminQueueQuerySchema rejeita 'to' anterior ou igual a 'from' — refine próprio, não o de analyticsPeriodQuerySchema", () => {
+    const from = new Date("2026-01-10T00:00:00.000Z").toISOString();
+    const to = new Date("2026-01-01T00:00:00.000Z").toISOString();
+    expect(adminQueueQuerySchema.safeParse({ from, to }).success).toBe(false);
+  });
+
+  it("adminQueueQuerySchema aceita 'to' posterior a 'from', e não exige nenhum dos dois", () => {
+    const from = new Date("2026-01-01T00:00:00.000Z").toISOString();
+    const to = new Date("2026-01-10T00:00:00.000Z").toISOString();
+    expect(adminQueueQuerySchema.safeParse({ from, to }).success).toBe(true);
+    expect(adminQueueQuerySchema.safeParse({ from }).success).toBe(true);
+    expect(adminQueueQuerySchema.safeParse({ to }).success).toBe(true);
+  });
+
+  it("priorityRuleSchema rejeita prioridade não-inteira, aceita negativa e zero", () => {
+    expect(priorityRuleSchema.safeParse({ source: "shopee", priority: -1, isActive: true }).success).toBe(true);
+    expect(priorityRuleSchema.safeParse({ source: "shopee", priority: 0, isActive: true }).success).toBe(true);
+    expect(priorityRuleSchema.safeParse({ source: "shopee", priority: 1.5, isActive: true }).success).toBe(false);
   });
 });
