@@ -2,7 +2,14 @@ import { randomUUID } from "node:crypto";
 import type { FastifyInstance } from "fastify";
 import { requireAuth, requireRole } from "../auth/rbac.js";
 import { productsRepository } from "./products.repository.js";
-import { ImageNotFoundError, InvalidImageTypeError, NoFileUploadedError, ProductNotFoundError, TooManyImagesError } from "../../lib/errors.js";
+import {
+  ImageNotFoundError,
+  ImageTooLargeError,
+  InvalidImageTypeError,
+  NoFileUploadedError,
+  ProductNotFoundError,
+  TooManyImagesError,
+} from "../../lib/errors.js";
 
 const ALLOWED_MIME_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 
@@ -28,6 +35,12 @@ export default async function imagesRoutes(app: FastifyInstance) {
       if (currentCount >= app.config.MAX_IMAGES_PER_PRODUCT) throw new TooManyImagesError();
 
       const buffer = await data.toBuffer();
+      // Antes só existia o teto global do multipart (20MB, multipart.ts) —
+      // MAX_IMAGE_SIZE_BYTES estava definida na config mas nunca era checada
+      // em lugar nenhum, então o limite documentado (5MB) não correspondia
+      // ao limite real aplicado.
+      if (buffer.length > app.config.MAX_IMAGE_SIZE_BYTES) throw new ImageTooLargeError(app.config.MAX_IMAGE_SIZE_BYTES);
+
       const key = `products/${product.id}/${randomUUID()}-${sanitizeFilename(data.filename)}`;
       const meta = await app.storage.upload({ key, body: buffer, contentType: data.mimetype });
 

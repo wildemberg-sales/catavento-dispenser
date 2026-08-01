@@ -135,6 +135,12 @@ export class TooManyImagesError extends DomainError {
   }
 }
 
+export class ImageTooLargeError extends DomainError {
+  constructor(maxBytes: number) {
+    super(`Imagem excede o tamanho máximo permitido (${Math.floor(maxBytes / 1024 / 1024)}MB).`, 413, "IMAGE_TOO_LARGE");
+  }
+}
+
 export class OperatorNotFoundError extends DomainError {
   constructor() {
     super("Operador não encontrado.", 404, "OPERATOR_NOT_FOUND");

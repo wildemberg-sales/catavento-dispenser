@@ -126,6 +126,55 @@ describe("Upload/delete de imagens de produto", () => {
     await app.close();
   });
 
+  it("rejeita imagem que excede MAX_IMAGE_SIZE_BYTES — antes disso o limite documentado (5MB) não era aplicado de verdade, só o teto global de 20MB do multipart", async () => {
+    await createUser(ctx.db, { username: "admin-tamanho", role: "admin" });
+    const product = await createProduct(ctx.db);
+    const app = await buildTestApp(ctx.db, { MAX_IMAGE_SIZE_BYTES: 10 });
+    const token = await loginAs(app, "admin-tamanho");
+
+    const { body, contentType } = buildMultipartBody({
+      fieldName: "file",
+      filename: "foto.png",
+      content: Buffer.from("conteudo-maior-que-dez-bytes"),
+      contentType: "image/png",
+    });
+
+    const response = await app.inject({
+      method: "POST",
+      url: `/admin/products/${product.id}/images`,
+      headers: { authorization: `Bearer ${token}`, "content-type": contentType },
+      payload: body,
+    });
+
+    expect(response.statusCode).toBe(413);
+    expect(response.json().error).toBe("IMAGE_TOO_LARGE");
+    await app.close();
+  });
+
+  it("aceita imagem dentro do limite configurado de MAX_IMAGE_SIZE_BYTES", async () => {
+    await createUser(ctx.db, { username: "admin-tamanho-ok", role: "admin" });
+    const product = await createProduct(ctx.db);
+    const app = await buildTestApp(ctx.db, { MAX_IMAGE_SIZE_BYTES: 1024 });
+    const token = await loginAs(app, "admin-tamanho-ok");
+
+    const { body, contentType } = buildMultipartBody({
+      fieldName: "file",
+      filename: "foto.png",
+      content: Buffer.from("pequeno"),
+      contentType: "image/png",
+    });
+
+    const response = await app.inject({
+      method: "POST",
+      url: `/admin/products/${product.id}/images`,
+      headers: { authorization: `Bearer ${token}`, "content-type": contentType },
+      payload: body,
+    });
+
+    expect(response.statusCode).toBe(201);
+    await app.close();
+  });
+
   it("delete remove o registro e chama storage.delete", async () => {
     await createUser(ctx.db, { username: "admin5", role: "admin" });
     const product = await createProduct(ctx.db);
