@@ -9,9 +9,15 @@ const ARGON2_OPTIONS = {
   parallelism: 1,
 };
 
-export async function seed(db: DbInstance) {
-  const adminHash = await argon2.hash("admin123", ARGON2_OPTIONS);
-  const operatorHash = await argon2.hash("operador123", ARGON2_OPTIONS);
+// Overrides existem pra permitir senhas fortes num ambiente que não seja o
+// dev local (ex.: uma instância de homologação) sem tocar no código — os
+// literais abaixo são só o default de conveniência pro fluxo local.
+export async function seed(
+  db: DbInstance,
+  overrides: { adminPassword?: string; operatorPassword?: string } = {}
+) {
+  const adminHash = await argon2.hash(overrides.adminPassword ?? "admin123", ARGON2_OPTIONS);
+  const operatorHash = await argon2.hash(overrides.operatorPassword ?? "operador123", ARGON2_OPTIONS);
 
   await db
     .insert(users)

@@ -51,6 +51,8 @@ O seed cria dois usuários para testar login imediatamente:
 | `admin` | `admin123` | admin (usa o app de gerência) |
 | `operador1` | `operador123` | operator (usa o app do tablet) |
 
+Essas senhas são públicas (estão aqui). O seed se recusa a rodar quando `NODE_ENV=production` (o caso da imagem de prod) a menos que `SEED_ALLOW_PRODUCTION=true` seja definido explicitamente — e nesse caso, defina também `SEED_ADMIN_PASSWORD`/`SEED_OPERATOR_PASSWORD` com senhas fortes em vez dos defaults acima.
+
 ---
 
 ## Rodando em desenvolvimento
