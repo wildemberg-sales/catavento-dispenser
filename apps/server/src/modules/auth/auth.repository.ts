@@ -21,6 +21,16 @@ export function authRepository(db: DbInstance) {
       return row ?? null;
     },
 
+    // Diferente de findActiveRefreshToken, não filtra por revokedAt IS NULL —
+    // precisa distinguir "token nunca existiu" (lixo/forjado) de "token já
+    // foi revogado antes" (reuso após revogação, sinal forte de roubo de
+    // token), já que os dois casos exigem reações diferentes do chamador.
+    async findAnyRefreshToken(token: string) {
+      const tokenHash = sha256Hex(token);
+      const [row] = await db.select().from(schema.refreshTokens).where(eq(schema.refreshTokens.tokenHash, tokenHash));
+      return row ?? null;
+    },
+
     async revokeRefreshToken(token: string) {
       const tokenHash = sha256Hex(token);
       await db

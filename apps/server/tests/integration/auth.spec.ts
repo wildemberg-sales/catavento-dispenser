@@ -184,6 +184,54 @@ describe("POST /auth/refresh", () => {
     await app.close();
   });
 
+  it("reuso de um refresh token já rotacionado derruba toda a família de sessões — o token novo emitido no primeiro refresh também para de funcionar", async () => {
+    await createUser(ctx.db, { username: "op-reuso", role: "operator" });
+    const app = await buildTestApp(ctx.db);
+    const { refreshToken: original } = await login(app, "op-reuso");
+
+    const firstRefresh = await app.inject({ method: "POST", url: "/auth/refresh", payload: { refreshToken: original } });
+    const { refreshToken: rotated } = firstRefresh.json();
+
+    // reusa o token original (já revogado pela rotação acima) — sinal de roubo
+    const reuseAttempt = await app.inject({ method: "POST", url: "/auth/refresh", payload: { refreshToken: original } });
+    expect(reuseAttempt.statusCode).toBe(401);
+
+    // o token novo (emitido no primeiro refresh, ainda dentro da validade)
+    // também deveria ter sido revogado — não só o token reusado
+    const rotatedAfterReuse = await app.inject({ method: "POST", url: "/auth/refresh", payload: { refreshToken: rotated } });
+    expect(rotatedAfterReuse.statusCode).toBe(401);
+    await app.close();
+  });
+
+  it("reuso de um refresh token revogado via logout derruba as outras sessões ativas do mesmo usuário", async () => {
+    await createUser(ctx.db, { username: "op-multi-sessao", role: "operator" });
+    const app = await buildTestApp(ctx.db);
+    // duas "sessões" (dois refresh tokens ativos) pro mesmo usuário — login
+    // não revoga sessões anteriores, então logar duas vezes simula dois
+    // dispositivos logados ao mesmo tempo.
+    const sessionA = await login(app, "op-multi-sessao");
+    const sessionB = await login(app, "op-multi-sessao");
+
+    await app.inject({ method: "POST", url: "/auth/logout", payload: { refreshToken: sessionA.refreshToken } });
+
+    // reusa o token já revogado pelo logout
+    const reuseAttempt = await app.inject({
+      method: "POST",
+      url: "/auth/refresh",
+      payload: { refreshToken: sessionA.refreshToken },
+    });
+    expect(reuseAttempt.statusCode).toBe(401);
+
+    // a outra sessão, que ainda era válida, também deveria ter sido derrubada
+    const otherSessionRefresh = await app.inject({
+      method: "POST",
+      url: "/auth/refresh",
+      payload: { refreshToken: sessionB.refreshToken },
+    });
+    expect(otherSessionRefresh.statusCode).toBe(401);
+    await app.close();
+  });
+
   it("retorna 401 para refresh token inválido/malformado", async () => {
     const app = await buildTestApp(ctx.db);
 

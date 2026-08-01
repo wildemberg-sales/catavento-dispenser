@@ -94,8 +94,23 @@ export function authService(deps: {
         throw new InvalidRefreshTokenError();
       }
 
-      const stored = await authRepo.findActiveRefreshToken(refreshToken);
-      if (!stored || stored.expiresAt.getTime() <= Date.now()) {
+      const stored = await authRepo.findAnyRefreshToken(refreshToken);
+      if (!stored) {
+        throw new InvalidRefreshTokenError();
+      }
+
+      // Reuso de um refresh token já revogado (rotacionado num refresh
+      // anterior, ou encerrado via logout) é um sinal forte de roubo de
+      // token — o token só existe fora do dispositivo legítimo se alguém o
+      // copiou antes da rotação. Reagir revogando só esse token não bastaria:
+      // um invasor com o token antigo já teria, no mesmo instante, o token
+      // novo também. Por isso derruba toda a família de sessões do usuário.
+      if (stored.revokedAt) {
+        await authRepo.revokeAllForUser(stored.userId);
+        throw new InvalidRefreshTokenError();
+      }
+
+      if (stored.expiresAt.getTime() <= Date.now()) {
         throw new InvalidRefreshTokenError();
       }
 
