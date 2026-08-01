@@ -17,13 +17,18 @@ export default async function authRoutes(app: FastifyInstance) {
     queueRepo: queueRepository(app.db),
   });
 
-  app.post("/login", async (req, reply) => {
+  // Sem isso, login e refresh não tinham nenhum controle de tentativas —
+  // força bruta e credential stuffing eram possíveis sem fricção (limite
+  // configurado em plugins/rate-limit.ts, registrado com global:false).
+  const rateLimited = { config: { rateLimit: {} } };
+
+  app.post("/login", rateLimited, async (req, reply) => {
     const input = loginInputSchema.parse(req.body);
     const result = await service.login(input.username, input.password);
     return reply.status(200).send(result);
   });
 
-  app.post("/refresh", async (req, reply) => {
+  app.post("/refresh", rateLimited, async (req, reply) => {
     const input = refreshInputSchema.parse(req.body);
     const result = await service.refresh(input.refreshToken);
     return reply.status(200).send(result);

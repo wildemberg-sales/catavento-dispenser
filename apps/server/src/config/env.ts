@@ -21,6 +21,10 @@ const envSchema = z.object({
   MAX_IMAGE_SIZE_BYTES: z.coerce.number().int().positive().default(5 * 1024 * 1024),
   MAX_IMAGES_PER_PRODUCT: z.coerce.number().int().positive().default(8),
   ANALYTICS_MAX_RANGE_DAYS: z.coerce.number().int().positive().default(90),
+  // Login/refresh não tinham nenhum controle de tentativas — força bruta e
+  // credential stuffing eram possíveis sem fricção nenhuma. Limite por IP.
+  AUTH_RATE_LIMIT_MAX: z.coerce.number().int().positive().default(10),
+  AUTH_RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive().default(60000),
 });
 
 export type Config = z.infer<typeof envSchema>;

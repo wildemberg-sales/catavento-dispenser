@@ -12,6 +12,7 @@ import storagePlugin from "./plugins/storage.js";
 import staticPlugin from "./plugins/static.js";
 import errorHandlerPlugin from "./plugins/error-handler.js";
 import multipartPlugin from "./plugins/multipart.js";
+import rateLimitPlugin from "./plugins/rate-limit.js";
 import authRoutes from "./modules/auth/auth.routes.js";
 import queueRoutes from "./modules/queue/queue.routes.js";
 import adminQueueRoutes from "./modules/queue/admin-queue.routes.js";
@@ -36,6 +37,7 @@ export async function buildApp(opts: {
   await app.register(storagePlugin, { storage: opts.storage });
   await app.register(staticPlugin);
   await app.register(multipartPlugin);
+  await app.register(rateLimitPlugin, { config: opts.config });
   await app.register(errorHandlerPlugin);
   await app.register(authRoutes, { prefix: "/auth" });
   await app.register(queueRoutes, { prefix: "/queue" });
