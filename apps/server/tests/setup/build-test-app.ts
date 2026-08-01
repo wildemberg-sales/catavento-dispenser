@@ -22,6 +22,7 @@ export function buildTestConfig(overrides?: Partial<Config>): Config {
     MAX_IMAGE_SIZE_BYTES: 5 * 1024 * 1024,
     MAX_IMAGES_PER_PRODUCT: 8,
     ANALYTICS_MAX_RANGE_DAYS: 90,
+    MAX_IMPORT_ROWS: 50000,
     // Alto o bastante pra não interferir nos testes existentes (que fazem
     // várias chamadas de login/refresh em sequência); testes que querem
     // exercitar o rate limit de verdade sobrescrevem este valor.

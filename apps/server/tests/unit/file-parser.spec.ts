@@ -2,10 +2,12 @@ import { describe, expect, it } from "vitest";
 import ExcelJS from "exceljs";
 import { parseFile } from "../../src/modules/imports/file-parser.js";
 
+const MAX_ROWS = 50000;
+
 describe("parseFile", () => {
   it("parseia um CSV simples com header e linhas", async () => {
     const csv = "SKU,Fonte,Nome\nABC1,mercado_livre,Produto A\nABC2,shopee,Produto B\n";
-    const result = await parseFile(Buffer.from(csv, "utf-8"), "lote.csv");
+    const result = await parseFile(Buffer.from(csv, "utf-8"), "lote.csv", MAX_ROWS);
     expect(result.sourceType).toBe("csv");
     expect(result.headers).toEqual(["SKU", "Fonte", "Nome"]);
     expect(result.rows).toHaveLength(2);
@@ -14,7 +16,7 @@ describe("parseFile", () => {
 
   it("ignora o BOM UTF-8 no primeiro header do CSV", async () => {
     const csv = "﻿SKU,Fonte\nABC1,shopee\n";
-    const result = await parseFile(Buffer.from(csv, "utf-8"), "lote.csv");
+    const result = await parseFile(Buffer.from(csv, "utf-8"), "lote.csv", MAX_ROWS);
     expect(result.headers[0]).toBe("SKU");
   });
 
@@ -25,7 +27,7 @@ describe("parseFile", () => {
     sheet.addRow(["ABC1", "mercado_livre", "Produto A"]);
     const buffer = Buffer.from(await workbook.xlsx.writeBuffer());
 
-    const result = await parseFile(buffer, "lote.xlsx");
+    const result = await parseFile(buffer, "lote.xlsx", MAX_ROWS);
     expect(result.sourceType).toBe("xlsx");
     expect(result.headers).toEqual(["SKU", "Fonte", "Nome"]);
     expect(result.rows).toHaveLength(1);
@@ -42,16 +44,32 @@ describe("parseFile", () => {
     sheet2.addRow(["XYZ"]);
     const buffer = Buffer.from(await workbook.xlsx.writeBuffer());
 
-    const result = await parseFile(buffer, "lote.xlsx");
+    const result = await parseFile(buffer, "lote.xlsx", MAX_ROWS);
     expect(result.headers).toEqual(["SKU"]);
     expect(result.rows).toHaveLength(1);
   });
 
   it("lança FileParseError para extensão não suportada", async () => {
-    await expect(parseFile(Buffer.from("conteudo qualquer"), "arquivo.txt")).rejects.toThrow();
+    await expect(parseFile(Buffer.from("conteudo qualquer"), "arquivo.txt", MAX_ROWS)).rejects.toThrow();
   });
 
   it("lança FileParseError para XLSX corrompido", async () => {
-    await expect(parseFile(Buffer.from("nao e um xlsx valido"), "lote.xlsx")).rejects.toThrow();
+    await expect(parseFile(Buffer.from("nao e um xlsx valido"), "lote.xlsx", MAX_ROWS)).rejects.toThrow();
+  });
+
+  it("lança FileParseError quando o CSV tem mais linhas que o teto configurado", async () => {
+    const rows = Array.from({ length: 5 }, (_, i) => `ABC${i}`).join("\n");
+    const csv = `SKU\n${rows}\n`;
+    await expect(parseFile(Buffer.from(csv, "utf-8"), "lote.csv", 3)).rejects.toThrow(/mais de 3 linhas/);
+  });
+
+  it("lança FileParseError quando o XLSX tem mais linhas que o teto configurado — mitigação de zip bomb", async () => {
+    const workbook = new ExcelJS.Workbook();
+    const sheet = workbook.addWorksheet("Produtos");
+    sheet.addRow(["SKU"]);
+    for (let i = 0; i < 5; i++) sheet.addRow([`ABC${i}`]);
+    const buffer = Buffer.from(await workbook.xlsx.writeBuffer());
+
+    await expect(parseFile(buffer, "lote.xlsx", 3)).rejects.toThrow(/mais de 3 linhas/);
   });
 });

@@ -15,6 +15,7 @@ export default async function importsRoutes(app: FastifyInstance) {
     priorityRulesRepo: priorityRulesRepository(app.db),
     queueRepo: queueRepository(app.db),
     bus: monitorBus,
+    maxImportRows: app.config.MAX_IMPORT_ROWS,
   });
 
   app.post(

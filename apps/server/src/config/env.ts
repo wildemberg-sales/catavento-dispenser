@@ -21,6 +21,13 @@ const envSchema = z.object({
   MAX_IMAGE_SIZE_BYTES: z.coerce.number().int().positive().default(5 * 1024 * 1024),
   MAX_IMAGES_PER_PRODUCT: z.coerce.number().int().positive().default(8),
   ANALYTICS_MAX_RANGE_DAYS: z.coerce.number().int().positive().default(90),
+  // Teto de linhas por importação — o upload em si já tem um limite de 20MB
+  // (multipart.ts), mas um .xlsx é um zip: um arquivo pequeno pode se
+  // descomprimir em milhões de linhas ("zip bomb"). ExcelJS não expõe uma
+  // opção pra limitar isso durante o parse em si, então o teto é checado
+  // logo após o parse, antes da iteração linha a linha mais custosa — reduz
+  // a janela de exposição, não elimina o pico de memória do parse inicial.
+  MAX_IMPORT_ROWS: z.coerce.number().int().positive().default(50000),
   // Login/refresh não tinham nenhum controle de tentativas — força bruta e
   // credential stuffing eram possíveis sem fricção nenhuma. Limite por IP.
   AUTH_RATE_LIMIT_MAX: z.coerce.number().int().positive().default(10),

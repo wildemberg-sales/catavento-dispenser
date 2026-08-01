@@ -15,7 +15,7 @@ function detectSourceType(filename: string): "csv" | "xlsx" {
   throw new UnsupportedFileTypeError();
 }
 
-function parseCsv(buffer: Buffer): ParsedFile {
+function parseCsv(buffer: Buffer, maxRows: number): ParsedFile {
   let records: Record<string, string>[];
   try {
     records = parse(buffer, {
@@ -27,11 +27,14 @@ function parseCsv(buffer: Buffer): ParsedFile {
   } catch (err) {
     throw new FileParseError(err instanceof Error ? err.message : "CSV inválido.");
   }
+  if (records.length > maxRows) {
+    throw new FileParseError(`O arquivo tem mais de ${maxRows} linhas — divida a importação em lotes menores.`);
+  }
   const headers = records.length > 0 ? Object.keys(records[0]!) : [];
   return { sourceType: "csv", headers, rows: records };
 }
 
-async function parseXlsx(buffer: Buffer): Promise<ParsedFile> {
+async function parseXlsx(buffer: Buffer, maxRows: number): Promise<ParsedFile> {
   const workbook = new ExcelJS.Workbook();
   try {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any -- exceljs
@@ -45,6 +48,12 @@ async function parseXlsx(buffer: Buffer): Promise<ParsedFile> {
   const sheet = workbook.worksheets[0];
   if (!sheet) {
     throw new FileParseError("Nenhuma planilha encontrada no arquivo.");
+  }
+
+  // Checa o teto assim que dá pra saber o tamanho real (pós-descompressão),
+  // antes da iteração célula a célula mais custosa logo abaixo.
+  if (sheet.rowCount - 1 > maxRows) {
+    throw new FileParseError(`O arquivo tem mais de ${maxRows} linhas — divida a importação em lotes menores.`);
   }
 
   const headerRow = sheet.getRow(1);
@@ -68,7 +77,7 @@ async function parseXlsx(buffer: Buffer): Promise<ParsedFile> {
   return { sourceType: "xlsx", headers, rows };
 }
 
-export async function parseFile(buffer: Buffer, filename: string): Promise<ParsedFile> {
+export async function parseFile(buffer: Buffer, filename: string, maxRows: number): Promise<ParsedFile> {
   const sourceType = detectSourceType(filename);
-  return sourceType === "csv" ? parseCsv(buffer) : parseXlsx(buffer);
+  return sourceType === "csv" ? parseCsv(buffer, maxRows) : parseXlsx(buffer, maxRows);
 }

@@ -17,12 +17,13 @@ export function importsService(deps: {
   priorityRulesRepo: PriorityRulesRepository;
   queueRepo: QueueRepository;
   bus: MonitorBus;
+  maxImportRows: number;
 }) {
-  const { repo, priorityRulesRepo, queueRepo, bus } = deps;
+  const { repo, priorityRulesRepo, queueRepo, bus, maxImportRows } = deps;
 
   return {
     async createPreview(buffer: Buffer, filename: string, importedBy: string): Promise<ImportPreviewResponse> {
-      const parsed = await parseFile(buffer, filename);
+      const parsed = await parseFile(buffer, filename, maxImportRows);
       const suggestedMapping = suggestColumnMapping(parsed.headers);
 
       const seenRefs = new Set<string>();
