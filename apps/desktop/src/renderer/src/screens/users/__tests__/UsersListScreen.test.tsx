@@ -200,4 +200,57 @@ describe("UsersListScreen", () => {
     await screen.findByTestId("deactivate-op-1");
     expect(screen.queryByTestId("deactivate-admin-1")).toBeNull();
   });
+
+  it("mostra estado vazio quando nenhum usuário atende os filtros", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { items: [], total: 0, page: 1, pageSize: 20 }));
+    renderScreen(fetchMock);
+
+    expect(await screen.findByText("Nenhum usuário encontrado para os filtros selecionados.")).toBeTruthy();
+  });
+
+  it("mostra a mensagem do servidor quando a busca falha com um erro de domínio", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(403, { error: "FORBIDDEN", message: "Sem permissão." }));
+    renderScreen(fetchMock);
+
+    expect(await screen.findByText("Sem permissão.")).toBeTruthy();
+  });
+
+  it("mostra mensagem padrão quando a busca falha por um erro que não é de domínio", async () => {
+    const fetchMock = vi.fn().mockRejectedValue(new Error("falha de rede"));
+    renderScreen(fetchMock);
+
+    expect(await screen.findByText("Não foi possível carregar os usuários.")).toBeTruthy();
+  });
+
+  it("mostra erro inline quando desativar/reativar falha", async () => {
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (init?.method === "PUT" && url.endsWith("/admin/users/user-1")) {
+        return Promise.resolve(jsonResponse(403, { error: "FORBIDDEN", message: "Sem permissão para alterar este usuário." }));
+      }
+      return Promise.resolve(jsonResponse(200, { items: [user()], total: 1, page: 1, pageSize: 20 }));
+    });
+    renderScreen(fetchMock);
+
+    await screen.findByText("op1");
+    fireEvent.click(screen.getByTestId("deactivate-user-1"));
+
+    expect(await screen.findByText("Sem permissão para alterar este usuário.")).toBeTruthy();
+  });
+
+  it("mostra mensagem padrão quando desativar/reativar falha por um erro que não é de domínio", async () => {
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (init?.method === "PUT" && url.endsWith("/admin/users/user-1")) {
+        return Promise.reject(new Error("falha de rede"));
+      }
+      return Promise.resolve(jsonResponse(200, { items: [user()], total: 1, page: 1, pageSize: 20 }));
+    });
+    renderScreen(fetchMock);
+
+    await screen.findByText("op1");
+    fireEvent.click(screen.getByTestId("deactivate-user-1"));
+
+    expect(await screen.findByText("Não foi possível atualizar o usuário.")).toBeTruthy();
+  });
 });

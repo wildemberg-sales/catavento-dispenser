@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import type { Role, UserDTO } from "@catavento/contracts/users";
 import { useAuth } from "../../auth/AuthContext";
 import { createUsersApi } from "../../api/users.api";
+import { ApiClientError } from "../../api/client";
 import { Button } from "../../components/Button";
 import { Card } from "../../components/Card";
 import { PageHeader } from "../../components/PageHeader";
@@ -21,12 +22,17 @@ export function UsersListScreen() {
   const [statusFilter, setStatusFilter] = useState<"" | "true" | "false">("");
   const [users, setUsers] = useState<UserDTO[] | null>(null);
   const [editingUser, setEditingUser] = useState<UserDTO | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(() => {
     const params: { role?: Role; isActive?: boolean } = {};
     if (roleFilter) params.role = roleFilter;
     if (statusFilter) params.isActive = statusFilter === "true";
-    usersApi.list(params).then((result) => setUsers(result.items));
+    setError(null);
+    usersApi
+      .list(params)
+      .then((result) => setUsers(result.items))
+      .catch((err) => setError(err instanceof ApiClientError ? err.message : "Não foi possível carregar os usuários."));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [usersApi, roleFilter, statusFilter]);
 
@@ -35,8 +41,13 @@ export function UsersListScreen() {
   }, [refresh]);
 
   async function handleToggleActive(id: string, isActive: boolean) {
-    await usersApi.update(id, { isActive });
-    refresh();
+    setError(null);
+    try {
+      await usersApi.update(id, { isActive });
+      refresh();
+    } catch (err) {
+      setError(err instanceof ApiClientError ? err.message : "Não foi possível atualizar o usuário.");
+    }
   }
 
   function handleUserSaved() {
@@ -88,6 +99,14 @@ export function UsersListScreen() {
         </label>
       </Card>
 
+      {error ? <p style={styles.error}>{error}</p> : null}
+
+      {users !== null && users.length === 0 ? (
+        <Card style={styles.emptyState}>
+          <span style={styles.emptyIcon}>🎉</span>
+          <p style={styles.emptyText}>Nenhum usuário encontrado para os filtros selecionados.</p>
+        </Card>
+      ) : (
       <Card className="table-wrapper">
         <table className="data-table">
           <thead>
@@ -150,6 +169,7 @@ export function UsersListScreen() {
           </tbody>
         </table>
       </Card>
+      )}
 
       {editingUser ? (
         <UserEditModal
@@ -165,6 +185,7 @@ export function UsersListScreen() {
 
 const styles: Record<string, React.CSSProperties> = {
   container: { display: "flex", flexDirection: "column", gap: 20 },
+  error: { ...typography.label, color: colors.danger, margin: 0 },
   filterCard: { padding: 16, display: "flex", flexWrap: "wrap", gap: 20 },
   filterLabel: {
     ...typography.label,
@@ -175,4 +196,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   strong: { fontWeight: 600, color: colors.text },
   actionsCell: { display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" },
+  emptyState: { padding: 32, display: "flex", flexDirection: "column", alignItems: "center", gap: 8 },
+  emptyIcon: { fontSize: 32 },
+  emptyText: { ...typography.body, color: colors.textMuted, margin: 0 },
 };

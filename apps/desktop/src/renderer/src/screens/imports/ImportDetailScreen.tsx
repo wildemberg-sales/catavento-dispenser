@@ -5,18 +5,13 @@ import type { UnlinkedItem } from "@catavento/contracts/products";
 import { useAuth } from "../../auth/AuthContext";
 import { createImportsApi } from "../../api/imports.api";
 import { createAdminQueueApi } from "../../api/adminQueue.api";
+import { ApiClientError } from "../../api/client";
 import { Button } from "../../components/Button";
 import { Card } from "../../components/Card";
 import { PageHeader } from "../../components/PageHeader";
 import { colors } from "../../theme/colors";
 import { typography } from "../../theme/typography";
-
-// A chave do "nome" no payload cru varia conforme o header da planilha de
-// origem ('nome' ou 'name') — usado tanto no título do card quanto no
-// prefill de cadastro de produto (handleRegisterProduct).
-function itemDisplayName(item: Pick<UnlinkedItem, "payload" | "externalRef">): string {
-  return (item.payload.nome as string | undefined) ?? (item.payload.name as string | undefined) ?? item.externalRef;
-}
+import { itemDisplayName } from "../../utils/itemDisplayName";
 
 export function ImportDetailScreen() {
   const { batchId } = useParams<{ batchId: string }>();
@@ -30,35 +25,57 @@ export function ImportDetailScreen() {
   const [unlinked, setUnlinked] = useState<UnlinkedItem[]>([]);
   const [unlinkedTotal, setUnlinkedTotal] = useState(0);
   const [linkResult, setLinkResult] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  function handleError(err: unknown, fallback: string) {
+    setError(err instanceof ApiClientError ? err.message : fallback);
+  }
 
   useEffect(() => {
     if (!batchId) return;
-    importsApi.get(batchId).then(setBatch);
+    importsApi.get(batchId).then(setBatch).catch((err) => handleError(err, "Não foi possível carregar a importação."));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [batchId, importsApi]);
 
   useEffect(() => {
     if (!batchId || !batch || batch.status !== "ready") return;
-    importsApi.rows(batchId).then((result) => setRows(result.items));
-    importsApi.unlinked(batchId).then((result) => {
-      setUnlinked(result.items);
-      setUnlinkedTotal(result.total);
-    });
+    importsApi
+      .rows(batchId)
+      .then((result) => setRows(result.items))
+      .catch((err) => handleError(err, "Não foi possível carregar as linhas importadas."));
+    importsApi
+      .unlinked(batchId)
+      .then((result) => {
+        setUnlinked(result.items);
+        setUnlinkedTotal(result.total);
+      })
+      .catch((err) => handleError(err, "Não foi possível carregar os itens sem vínculo."));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [batchId, batch?.status]);
 
   async function handleLinkBySku() {
     if (!batchId) return;
-    const result = await importsApi.linkBySku(batchId);
-    setLinkResult(`${result.linkedCount} de ${result.totalItems} itens vinculados automaticamente.`);
-    const refreshed = await importsApi.unlinked(batchId);
-    setUnlinked(refreshed.items);
-    setUnlinkedTotal(refreshed.total);
+    setError(null);
+    try {
+      const result = await importsApi.linkBySku(batchId);
+      setLinkResult(`${result.linkedCount} de ${result.totalItems} itens vinculados automaticamente.`);
+      const refreshed = await importsApi.unlinked(batchId);
+      setUnlinked(refreshed.items);
+      setUnlinkedTotal(refreshed.total);
+    } catch (err) {
+      handleError(err, "Não foi possível vincular os itens por SKU.");
+    }
   }
 
   async function handleManualLink(itemId: string, productId: string) {
-    await adminQueueApi.link(itemId, { productId });
-    setUnlinked((current) => current.filter((item) => item.id !== itemId));
-    setUnlinkedTotal((current) => Math.max(0, current - 1));
+    setError(null);
+    try {
+      await adminQueueApi.link(itemId, { productId });
+      setUnlinked((current) => current.filter((item) => item.id !== itemId));
+      setUnlinkedTotal((current) => Math.max(0, current - 1));
+    } catch (err) {
+      handleError(err, "Não foi possível vincular o item ao produto.");
+    }
   }
 
   function handleRegisterProduct(item: UnlinkedItem) {
@@ -71,7 +88,13 @@ export function ImportDetailScreen() {
     });
   }
 
-  if (!batch) return null;
+  if (!batch) {
+    return error ? (
+      <div style={styles.container}>
+        <p style={styles.error}>{error}</p>
+      </div>
+    ) : null;
+  }
 
   if (batch.status === "processing") {
     return (
@@ -99,6 +122,7 @@ export function ImportDetailScreen() {
           </Button>
         }
       />
+      {error ? <p style={styles.error}>{error}</p> : null}
       {linkResult ? (
         <p style={styles.successNote}>
           <span aria-hidden="true">✓ </span>
@@ -189,6 +213,7 @@ export function ImportDetailScreen() {
 
 const styles: Record<string, React.CSSProperties> = {
   container: { display: "flex", flexDirection: "column", gap: 20 },
+  error: { ...typography.label, color: colors.danger, margin: 0 },
   reconciliationBanner: {
     display: "flex",
     flexWrap: "wrap",

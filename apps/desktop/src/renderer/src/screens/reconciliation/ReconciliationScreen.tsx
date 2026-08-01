@@ -4,14 +4,12 @@ import type { UnlinkedItem } from "@catavento/contracts/products";
 import { useAuth } from "../../auth/AuthContext";
 import { createReconciliationApi } from "../../api/reconciliation.api";
 import { createAdminQueueApi } from "../../api/adminQueue.api";
+import { ApiClientError } from "../../api/client";
 import { Card } from "../../components/Card";
 import { PageHeader } from "../../components/PageHeader";
 import { colors } from "../../theme/colors";
 import { typography } from "../../theme/typography";
-
-function displayName(item: UnlinkedItem): string {
-  return (item.payload.nome as string | undefined) ?? (item.payload.name as string | undefined) ?? item.externalRef;
-}
+import { itemDisplayName as displayName } from "../../utils/itemDisplayName";
 
 export function ReconciliationScreen() {
   const { apiClient } = useAuth();
@@ -20,9 +18,14 @@ export function ReconciliationScreen() {
   const navigate = useNavigate();
 
   const [items, setItems] = useState<UnlinkedItem[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(() => {
-    reconciliationApi.list().then((result) => setItems(result.items));
+    setError(null);
+    reconciliationApi
+      .list()
+      .then((result) => setItems(result.items))
+      .catch((err) => setError(err instanceof ApiClientError ? err.message : "Não foi possível carregar os itens sem vínculo."));
   }, [reconciliationApi]);
 
   useEffect(() => {
@@ -30,8 +33,13 @@ export function ReconciliationScreen() {
   }, [refresh]);
 
   async function handleLinkSuggestion(item: UnlinkedItem, productId: string) {
-    await adminQueueApi.link(item.id, { productId });
-    refresh();
+    setError(null);
+    try {
+      await adminQueueApi.link(item.id, { productId });
+      refresh();
+    } catch (err) {
+      setError(err instanceof ApiClientError ? err.message : "Não foi possível vincular o item ao produto.");
+    }
   }
 
   function handleRegisterProduct(item: UnlinkedItem) {
@@ -50,6 +58,8 @@ export function ReconciliationScreen() {
         title="Itens sem vínculo"
         subtitle="Pedidos de qualquer importação que ainda não têm um produto vinculado"
       />
+
+      {error ? <p style={styles.error}>{error}</p> : null}
 
       {items === null ? null : items.length === 0 ? (
         <Card style={styles.emptyState}>
@@ -97,6 +107,7 @@ export function ReconciliationScreen() {
 
 const styles: Record<string, React.CSSProperties> = {
   container: { display: "flex", flexDirection: "column", gap: 20 },
+  error: { ...typography.label, color: colors.danger, margin: 0 },
   list: { display: "flex", flexDirection: "column", gap: 10 },
   itemCard: { display: "flex", flexDirection: "column", gap: 10, padding: 16 },
   itemHeader: { display: "flex", flexDirection: "column", gap: 2 },

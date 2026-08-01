@@ -2,11 +2,13 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import type { PriorityRule, QueueItemDTO, SourceType } from "@catavento/contracts/queue";
 import { useAuth } from "../../auth/AuthContext";
 import { createAdminQueueApi } from "../../api/adminQueue.api";
+import { ApiClientError } from "../../api/client";
 import { Button } from "../../components/Button";
 import { Card } from "../../components/Card";
 import { PageHeader } from "../../components/PageHeader";
 import { StatusBadge } from "../../components/StatusBadge";
 import { DateTimeCell } from "../../components/DateTimeCell";
+import { PaginationBar } from "../../components/PaginationBar";
 import { colors } from "../../theme/colors";
 import { typography } from "../../theme/typography";
 import { startOfDayIso, endOfDayIso } from "../../utils/dateRange";
@@ -32,10 +34,11 @@ export function QueueManagementScreen() {
   const [date, setDate] = useState("");
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(1);
-  const [items, setItems] = useState<QueueItemDTO[]>([]);
+  const [items, setItems] = useState<QueueItemDTO[] | null>(null);
   const [total, setTotal] = useState(0);
   const [rules, setRules] = useState<PriorityRule[]>(SOURCES.map((source) => ({ source, priority: 0, isActive: true })));
   const [rulesMessage, setRulesMessage] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   // Antes só existia PUT — o editor sempre abria zerado, sem mostrar o que
   // já estava salvo, então editar uma única fonte arriscava sobrescrever as
@@ -44,8 +47,6 @@ export function QueueManagementScreen() {
     adminQueueApi.getPriorityRules().then((result) => setRules(result.rules));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [adminQueueApi]);
-
-  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   function fetchPage(targetPage: number) {
     const params: {
@@ -64,10 +65,14 @@ export function QueueManagementScreen() {
       params.to = endOfDayIso(date);
     }
     if (query) params.q = query;
-    adminQueueApi.list(params).then((result) => {
-      setItems(result.items);
-      setTotal(result.total);
-    });
+    setError(null);
+    adminQueueApi
+      .list(params)
+      .then((result) => {
+        setItems(result.items);
+        setTotal(result.total);
+      })
+      .catch((err) => setError(err instanceof ApiClientError ? err.message : "Não foi possível carregar a fila."));
   }
 
   // Roda a primeira busca sem atraso; qualquer mudança de filtro depois disso
@@ -94,13 +99,23 @@ export function QueueManagementScreen() {
   }
 
   async function handleRequeue(id: string) {
-    await adminQueueApi.requeue(id);
-    fetchPage(page);
+    setError(null);
+    try {
+      await adminQueueApi.requeue(id);
+      fetchPage(page);
+    } catch (err) {
+      setError(err instanceof ApiClientError ? err.message : "Não foi possível repor o item na fila.");
+    }
   }
 
   async function handleCancel(id: string) {
-    await adminQueueApi.cancel(id);
-    fetchPage(page);
+    setError(null);
+    try {
+      await adminQueueApi.cancel(id);
+      fetchPage(page);
+    } catch (err) {
+      setError(err instanceof ApiClientError ? err.message : "Não foi possível cancelar o item.");
+    }
   }
 
   function updateRule(source: SourceType, patch: Partial<PriorityRule>) {
@@ -108,14 +123,21 @@ export function QueueManagementScreen() {
   }
 
   async function handleSaveRules() {
+    setError(null);
     setRulesMessage(null);
-    await adminQueueApi.setPriorityRules({ rules });
-    setRulesMessage("Regras de prioridade atualizadas.");
+    try {
+      await adminQueueApi.setPriorityRules({ rules });
+      setRulesMessage("Regras de prioridade atualizadas.");
+    } catch (err) {
+      setError(err instanceof ApiClientError ? err.message : "Não foi possível salvar as regras de prioridade.");
+    }
   }
 
   return (
     <div style={styles.container}>
       <PageHeader title="Fila de produção" subtitle="Acompanhe e gerencie os pedidos em andamento" />
+
+      {error ? <p style={styles.error}>{error}</p> : null}
 
       <Card style={styles.filterCard}>
         <div style={styles.filterForm}>
@@ -175,6 +197,12 @@ export function QueueManagementScreen() {
         </div>
       </Card>
 
+      {items !== null && items.length === 0 ? (
+        <Card style={styles.emptyState}>
+          <span style={styles.emptyIcon}>🎉</span>
+          <p style={styles.emptyText}>Nenhum item encontrado para os filtros selecionados.</p>
+        </Card>
+      ) : (
       <Card className="table-wrapper">
         <table className="data-table">
           <thead>
@@ -188,7 +216,7 @@ export function QueueManagementScreen() {
             </tr>
           </thead>
           <tbody>
-            {items.map((item) => (
+            {(items ?? []).map((item) => (
               <tr key={item.id}>
                 <td style={styles.strong}>{item.externalRef}</td>
                 <td>{item.source}</td>
@@ -226,30 +254,9 @@ export function QueueManagementScreen() {
           </tbody>
         </table>
       </Card>
+      )}
 
-      <div style={styles.paginationRow}>
-        <Button
-          data-testid="page-prev"
-          variant="secondary"
-          size="sm"
-          disabled={page <= 1}
-          onClick={() => goToPage(page - 1)}
-        >
-          Anterior
-        </Button>
-        <span style={styles.pageInfo}>
-          Página {page} de {totalPages}
-        </span>
-        <Button
-          data-testid="page-next"
-          variant="secondary"
-          size="sm"
-          disabled={page >= totalPages}
-          onClick={() => goToPage(page + 1)}
-        >
-          Próxima
-        </Button>
-      </div>
+      <PaginationBar page={page} total={total} pageSize={PAGE_SIZE} onChange={goToPage} />
 
       <Card style={styles.rulesSection}>
         <h2 style={styles.sectionTitle}>🎯 Regras de prioridade</h2>
@@ -294,6 +301,10 @@ export function QueueManagementScreen() {
 const styles: Record<string, React.CSSProperties> = {
   container: { display: "flex", flexDirection: "column", gap: 20 },
   sectionTitle: { ...typography.sectionTitle, color: colors.secondary, margin: 0 },
+  error: { ...typography.label, color: colors.danger, margin: 0 },
+  emptyState: { padding: 32, display: "flex", flexDirection: "column", alignItems: "center", gap: 8 },
+  emptyIcon: { fontSize: 32 },
+  emptyText: { ...typography.body, color: colors.textMuted, margin: 0 },
   filterCard: { padding: 16 },
   filterForm: { display: "flex", flexWrap: "wrap", gap: 20, alignItems: "flex-end" },
   filterLabel: { ...typography.label, color: colors.text, display: "flex", flexDirection: "column", gap: 6 },
@@ -309,8 +320,6 @@ const styles: Record<string, React.CSSProperties> = {
   strong: { fontWeight: 600, color: colors.text },
   muted: { color: colors.textMuted },
   actionsCell: { display: "flex", gap: 8, flexWrap: "wrap" },
-  paginationRow: { display: "flex", alignItems: "center", justifyContent: "center", gap: 16 },
-  pageInfo: { ...typography.label, color: colors.textMuted },
   rulesSection: {
     display: "flex",
     flexDirection: "column",

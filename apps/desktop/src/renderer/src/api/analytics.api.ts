@@ -8,11 +8,9 @@ import type {
   OperatorReportItem,
   ExportQuery,
 } from "@catavento/contracts/analytics";
-import type { PaginationQuery } from "@catavento/contracts/common";
+import type { PaginationQuery, Paginated } from "@catavento/contracts/common";
 import type { ApiClient } from "./client";
 import { buildQueryString } from "./queryString";
-
-type Paginated<T> = { items: T[]; total: number; page: number; pageSize: number };
 
 export function createAnalyticsApi(client: ApiClient) {
   return {

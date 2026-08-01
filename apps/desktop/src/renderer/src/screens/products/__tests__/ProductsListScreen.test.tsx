@@ -166,4 +166,82 @@ describe("ProductsListScreen", () => {
     const thumbnail = await screen.findByAltText("Bolo Fake Rosa 2 Andares");
     expect(thumbnail.getAttribute("src")).toBe("http://localhost:3000/uploads/a.png");
   });
+
+  it("mostra a mensagem do servidor quando a busca falha com um erro de domínio", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(403, { error: "FORBIDDEN", message: "Sem permissão." }));
+    renderScreen(fetchMock);
+
+    expect(await screen.findByText("Sem permissão.")).toBeTruthy();
+  });
+
+  it("mostra mensagem padrão quando a busca falha por um erro que não é de domínio", async () => {
+    const fetchMock = vi.fn().mockRejectedValue(new Error("falha de rede"));
+    renderScreen(fetchMock);
+
+    expect(await screen.findByText("Não foi possível carregar os produtos.")).toBeTruthy();
+  });
+
+  it("mostra erro inline quando desativar falha", async () => {
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (init?.method === "DELETE" && url.includes("/admin/products/prod-1")) {
+        return Promise.resolve(jsonResponse(409, { error: "PRODUCT_IN_USE", message: "Produto tem pedidos em andamento." }));
+      }
+      return Promise.resolve(jsonResponse(200, { items: [product()], total: 1, page: 1, pageSize: 20 }));
+    });
+    renderScreen(fetchMock);
+
+    fireEvent.click(await screen.findByTestId("deactivate-prod-1"));
+
+    expect(await screen.findByText("Produto tem pedidos em andamento.")).toBeTruthy();
+  });
+
+  it("mostra erro inline quando reativar falha", async () => {
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (init?.method === "PUT" && url.includes("/admin/products/prod-2")) {
+        return Promise.reject(new Error("falha de rede"));
+      }
+      return Promise.resolve(
+        jsonResponse(200, { items: [product({ id: "prod-2", isActive: false })], total: 1, page: 1, pageSize: 20 })
+      );
+    });
+    renderScreen(fetchMock);
+
+    fireEvent.click(await screen.findByTestId("reactivate-prod-2"));
+
+    expect(await screen.findByText("Não foi possível reativar o produto.")).toBeTruthy();
+  });
+
+  it("mostra mensagem padrão quando desativar falha por um erro que não é de domínio", async () => {
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (init?.method === "DELETE" && url.includes("/admin/products/prod-1")) {
+        return Promise.reject(new Error("falha de rede"));
+      }
+      return Promise.resolve(jsonResponse(200, { items: [product()], total: 1, page: 1, pageSize: 20 }));
+    });
+    renderScreen(fetchMock);
+
+    fireEvent.click(await screen.findByTestId("deactivate-prod-1"));
+
+    expect(await screen.findByText("Não foi possível desativar o produto.")).toBeTruthy();
+  });
+
+  it("mostra a mensagem do servidor quando reativar falha com um erro de domínio", async () => {
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (init?.method === "PUT" && url.includes("/admin/products/prod-2")) {
+        return Promise.resolve(jsonResponse(403, { error: "FORBIDDEN", message: "Sem permissão para reativar." }));
+      }
+      return Promise.resolve(
+        jsonResponse(200, { items: [product({ id: "prod-2", isActive: false })], total: 1, page: 1, pageSize: 20 })
+      );
+    });
+    renderScreen(fetchMock);
+
+    fireEvent.click(await screen.findByTestId("reactivate-prod-2"));
+
+    expect(await screen.findByText("Sem permissão para reativar.")).toBeTruthy();
+  });
 });

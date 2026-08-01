@@ -1,8 +1,7 @@
 import type { UserDTO, CreateUserInput, UpdateUserInput, ResetPasswordInput, ListUsersQuery } from "@catavento/contracts/users";
+import type { Paginated } from "@catavento/contracts/common";
 import type { ApiClient } from "./client";
 import { buildQueryString } from "./queryString";
-
-type Paginated<T> = { items: T[]; total: number; page: number; pageSize: number };
 
 export function createUsersApi(client: ApiClient) {
   return {

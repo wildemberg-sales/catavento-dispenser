@@ -6,11 +6,9 @@ import type {
   ProblemQueueItem,
 } from "@catavento/contracts/queue";
 import type { LinkQueueItemInput } from "@catavento/contracts/products";
-import type { PaginationQuery } from "@catavento/contracts/common";
+import type { PaginationQuery, Paginated } from "@catavento/contracts/common";
 import type { ApiClient } from "./client";
 import { buildQueryString } from "./queryString";
-
-type Paginated<T> = { items: T[]; total: number; page: number; pageSize: number };
 
 export function createAdminQueueApi(client: ApiClient) {
   return {

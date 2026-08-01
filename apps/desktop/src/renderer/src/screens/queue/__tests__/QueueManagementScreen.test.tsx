@@ -336,4 +336,141 @@ describe("QueueManagementScreen", () => {
     expect(screen.getByTestId("priority-shopee")).toHaveValue(3);
     expect(screen.getByTestId("priority-ebay")).toHaveValue(1);
   });
+
+  it("mostra estado vazio quando não há itens para os filtros selecionados", async () => {
+    const fetchMock = withRulesMock(() => Promise.resolve(jsonResponse(200, { items: [], total: 0, page: 1, pageSize: 100 })));
+    renderScreen(fetchMock);
+
+    expect(await screen.findByText("Nenhum item encontrado para os filtros selecionados.")).toBeTruthy();
+  });
+
+  it("mostra erro inline com a mensagem do servidor quando a busca da fila falha com um erro de domínio", async () => {
+    const fetchMock = withRulesMock(() =>
+      Promise.resolve(jsonResponse(403, { error: "FORBIDDEN", message: "Sem permissão para ver a fila." }))
+    );
+    renderScreen(fetchMock);
+
+    expect(await screen.findByText("Sem permissão para ver a fila.")).toBeTruthy();
+  });
+
+  it("mostra mensagem padrão quando a busca da fila falha por um erro que não é de domínio (ex.: rede)", async () => {
+    const fetchMock = withRulesMock(() => Promise.reject(new Error("falha de rede")));
+    renderScreen(fetchMock);
+
+    expect(await screen.findByText("Não foi possível carregar a fila.")).toBeTruthy();
+  });
+
+  it("mostra erro inline quando repor na fila falha", async () => {
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (init?.method === "POST" && url.endsWith("/admin/queue/items/item-2/requeue")) {
+        return Promise.reject(new Error("falha de rede"));
+      }
+      if (url.endsWith("/admin/queue/rules")) {
+        return Promise.resolve(jsonResponse(200, { rules: DEFAULT_RULES }));
+      }
+      return Promise.resolve(jsonResponse(200, { items: [problemItem], total: 1, page: 1, pageSize: 20 }));
+    });
+    renderScreen(fetchMock);
+    await waitFor(() => expect(screen.getByTestId("requeue-item-2")).toBeTruthy());
+
+    fireEvent.click(screen.getByTestId("requeue-item-2"));
+
+    expect(await screen.findByText("Não foi possível repor o item na fila.")).toBeTruthy();
+  });
+
+  it("mostra a mensagem do servidor quando repor na fila falha com um erro de domínio", async () => {
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (init?.method === "POST" && url.endsWith("/admin/queue/items/item-2/requeue")) {
+        return Promise.resolve(jsonResponse(409, { error: "ALREADY_COMPLETED", message: "Item já foi concluído." }));
+      }
+      if (url.endsWith("/admin/queue/rules")) {
+        return Promise.resolve(jsonResponse(200, { rules: DEFAULT_RULES }));
+      }
+      return Promise.resolve(jsonResponse(200, { items: [problemItem], total: 1, page: 1, pageSize: 20 }));
+    });
+    renderScreen(fetchMock);
+    await waitFor(() => expect(screen.getByTestId("requeue-item-2")).toBeTruthy());
+
+    fireEvent.click(screen.getByTestId("requeue-item-2"));
+
+    expect(await screen.findByText("Item já foi concluído.")).toBeTruthy();
+  });
+
+  it("mostra erro inline quando cancelar falha", async () => {
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (init?.method === "POST" && url.endsWith("/admin/queue/items/item-1/cancel")) {
+        return Promise.reject(new Error("falha de rede"));
+      }
+      if (url.endsWith("/admin/queue/rules")) {
+        return Promise.resolve(jsonResponse(200, { rules: DEFAULT_RULES }));
+      }
+      return Promise.resolve(jsonResponse(200, { items: [pendingItem], total: 1, page: 1, pageSize: 20 }));
+    });
+    renderScreen(fetchMock);
+    await waitFor(() => expect(screen.getByTestId("cancel-item-1")).toBeTruthy());
+
+    fireEvent.click(screen.getByTestId("cancel-item-1"));
+
+    expect(await screen.findByText("Não foi possível cancelar o item.")).toBeTruthy();
+  });
+
+  it("mostra a mensagem do servidor quando cancelar falha com um erro de domínio", async () => {
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (init?.method === "POST" && url.endsWith("/admin/queue/items/item-1/cancel")) {
+        return Promise.resolve(jsonResponse(409, { error: "ALREADY_COMPLETED", message: "Item já foi concluído." }));
+      }
+      if (url.endsWith("/admin/queue/rules")) {
+        return Promise.resolve(jsonResponse(200, { rules: DEFAULT_RULES }));
+      }
+      return Promise.resolve(jsonResponse(200, { items: [pendingItem], total: 1, page: 1, pageSize: 20 }));
+    });
+    renderScreen(fetchMock);
+    await waitFor(() => expect(screen.getByTestId("cancel-item-1")).toBeTruthy());
+
+    fireEvent.click(screen.getByTestId("cancel-item-1"));
+
+    expect(await screen.findByText("Item já foi concluído.")).toBeTruthy();
+  });
+
+  it("mostra erro inline quando salvar as regras de prioridade falha", async () => {
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (init?.method === "PUT" && url.endsWith("/admin/queue/rules")) {
+        return Promise.reject(new Error("falha de rede"));
+      }
+      if (url.endsWith("/admin/queue/rules")) {
+        return Promise.resolve(jsonResponse(200, { rules: DEFAULT_RULES }));
+      }
+      return Promise.resolve(jsonResponse(200, { items: [], total: 0, page: 1, pageSize: 20 }));
+    });
+    renderScreen(fetchMock);
+
+    await waitFor(() => expect(screen.getByTestId("priority-save")).toBeTruthy());
+    fireEvent.click(screen.getByTestId("priority-save"));
+
+    expect(await screen.findByText("Não foi possível salvar as regras de prioridade.")).toBeTruthy();
+  });
+
+  it("mostra a mensagem do servidor quando salvar as regras de prioridade falha com um erro de domínio", async () => {
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (init?.method === "PUT" && url.endsWith("/admin/queue/rules")) {
+        return Promise.resolve(jsonResponse(403, { error: "FORBIDDEN", message: "Sem permissão para alterar as regras." }));
+      }
+      if (url.endsWith("/admin/queue/rules")) {
+        return Promise.resolve(jsonResponse(200, { rules: DEFAULT_RULES }));
+      }
+      return Promise.resolve(jsonResponse(200, { items: [], total: 0, page: 1, pageSize: 20 }));
+    });
+    renderScreen(fetchMock);
+
+    await waitFor(() => expect(screen.getByTestId("priority-save")).toBeTruthy());
+    fireEvent.click(screen.getByTestId("priority-save"));
+
+    expect(await screen.findByText("Sem permissão para alterar as regras.")).toBeTruthy();
+  });
 });

@@ -13,3 +13,10 @@ export const paginatedResponseSchema = <T extends z.ZodTypeAny>(item: T) =>
     page: z.number().int(),
     pageSize: z.number().int(),
   });
+
+export type Paginated<T> = {
+  items: T[];
+  total: number;
+  page: number;
+  pageSize: number;
+};

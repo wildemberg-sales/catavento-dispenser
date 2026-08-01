@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import type { ImportBatchDTO } from "@catavento/contracts/imports";
 import { useAuth } from "../../auth/AuthContext";
 import { createImportsApi } from "../../api/imports.api";
+import { ApiClientError } from "../../api/client";
 import { Button } from "../../components/Button";
 import { Card } from "../../components/Card";
 import { PageHeader } from "../../components/PageHeader";
@@ -15,9 +16,13 @@ export function ImportsListScreen() {
   const importsApi = useMemo(() => createImportsApi(apiClient), [apiClient]);
   const navigate = useNavigate();
   const [batches, setBatches] = useState<ImportBatchDTO[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    importsApi.list().then((result) => setBatches(result.items));
+    importsApi
+      .list()
+      .then((result) => setBatches(result.items))
+      .catch((err) => setError(err instanceof ApiClientError ? err.message : "Não foi possível carregar as importações."));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [importsApi]);
 
@@ -32,6 +37,8 @@ export function ImportsListScreen() {
           </Button>
         }
       />
+
+      {error ? <p style={styles.error}>{error}</p> : null}
 
       {batches === null ? null : batches.length === 0 ? (
         <Card style={styles.emptyState}>
@@ -73,6 +80,7 @@ export function ImportsListScreen() {
 
 const styles: Record<string, React.CSSProperties> = {
   container: { display: "flex", flexDirection: "column", gap: 20 },
+  error: { ...typography.label, color: colors.danger, margin: 0 },
   row: { cursor: "pointer" },
   filename: { fontWeight: 600, color: colors.text },
   muted: { color: colors.textMuted },

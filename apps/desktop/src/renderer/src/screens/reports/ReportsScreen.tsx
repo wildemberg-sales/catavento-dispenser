@@ -13,6 +13,7 @@ import { ApiClientError } from "../../api/client";
 import { Card } from "../../components/Card";
 import { PageHeader } from "../../components/PageHeader";
 import { Button } from "../../components/Button";
+import { PaginationBar } from "../../components/PaginationBar";
 import { TrendChart } from "../../components/charts/TrendChart";
 import { colors } from "../../theme/colors";
 import { typography } from "../../theme/typography";
@@ -44,45 +45,6 @@ const OUTCOME_LABELS: Record<string, string> = {
 // Antes as abas "Por operador" e "Por produto" sempre pediam a página 1 sem
 // nenhum controle — qualquer operador/produto além do 20º ficava invisível,
 // sem nenhuma indicação de que havia mais dados.
-function PaginationBar({
-  page,
-  total,
-  onChange,
-  testIdPrefix,
-}: {
-  page: number;
-  total: number;
-  onChange: (page: number) => void;
-  testIdPrefix: string;
-}) {
-  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
-  if (total <= PAGE_SIZE) return null;
-
-  return (
-    <div style={styles.paginationBar}>
-      <button
-        data-testid={`${testIdPrefix}-prev`}
-        className="btn btn-sm btn-ghost"
-        disabled={page <= 1}
-        onClick={() => onChange(page - 1)}
-      >
-        Anterior
-      </button>
-      <span style={styles.paginationLabel} data-testid={`${testIdPrefix}-label`}>
-        Página {page} de {totalPages} ({total} no total)
-      </span>
-      <button
-        data-testid={`${testIdPrefix}-next`}
-        className="btn btn-sm btn-ghost"
-        disabled={page >= totalPages}
-        onClick={() => onChange(page + 1)}
-      >
-        Próxima
-      </button>
-    </div>
-  );
-}
-
 export function ReportsScreen() {
   const { apiClient } = useAuth();
   const analyticsApi = useMemo(() => createAnalyticsApi(apiClient), [apiClient]);
@@ -317,7 +279,16 @@ export function ReportsScreen() {
               ))}
             </tbody>
           </table>
-          <PaginationBar page={operatorPage} total={operatorTotal} onChange={setOperatorPage} testIdPrefix="operator-page" />
+          <PaginationBar
+            page={operatorPage}
+            total={operatorTotal}
+            pageSize={PAGE_SIZE}
+            onChange={setOperatorPage}
+            testIdPrefix="operator-page"
+            variant="ghost"
+            showTotal
+            hideWhenSinglePage
+          />
         </Card>
       ) : null}
 
@@ -345,7 +316,16 @@ export function ReportsScreen() {
               ))}
             </tbody>
           </table>
-          <PaginationBar page={productPage} total={productTotal} onChange={setProductPage} testIdPrefix="product-page" />
+          <PaginationBar
+            page={productPage}
+            total={productTotal}
+            pageSize={PAGE_SIZE}
+            onChange={setProductPage}
+            testIdPrefix="product-page"
+            variant="ghost"
+            showTotal
+            hideWhenSinglePage
+          />
         </Card>
       ) : null}
 
@@ -516,8 +496,12 @@ export function ReportsScreen() {
                 <PaginationBar
                   page={reportItemsPage}
                   total={reportItemsTotal}
+                  pageSize={PAGE_SIZE}
                   onChange={setReportItemsPage}
                   testIdPrefix="report-items-page"
+                  variant="ghost"
+                  showTotal
+                  hideWhenSinglePage
                 />
               </Card>
             </>
@@ -551,8 +535,6 @@ const styles: Record<string, React.CSSProperties> = {
   statCard: { padding: 16, minWidth: 160, display: "flex", flexDirection: "column", gap: 6 },
   statLabel: { ...typography.label, color: colors.textMuted },
   statValue: { ...typography.sectionTitle, color: colors.secondary },
-  paginationBar: { display: "flex", alignItems: "center", justifyContent: "center", gap: 16, padding: "12px 0 0" },
-  paginationLabel: { ...typography.label, color: colors.textMuted },
   comboboxWrapper: { position: "relative", minWidth: 260 },
   suggestionList: {
     position: "absolute",

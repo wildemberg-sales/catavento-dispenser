@@ -110,4 +110,52 @@ describe("ReconciliationScreen", () => {
 
     expect(await screen.findByText("Novo produto")).toBeTruthy();
   });
+
+  it("mostra a mensagem do servidor quando a busca falha com um erro de domínio", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(403, { error: "FORBIDDEN", message: "Sem permissão." }));
+    renderScreen(fetchMock);
+
+    expect(await screen.findByText("Sem permissão.")).toBeTruthy();
+  });
+
+  it("mostra mensagem padrão quando a busca falha por um erro que não é de domínio", async () => {
+    const fetchMock = vi.fn().mockRejectedValue(new Error("falha de rede"));
+    renderScreen(fetchMock);
+
+    expect(await screen.findByText("Não foi possível carregar os itens sem vínculo.")).toBeTruthy();
+  });
+
+  it("mostra erro inline quando vincular por sugestão falha", async () => {
+    const item = unlinkedItem({
+      suggestions: [{ productId: "prod-1", productName: "Bolo Fake Rosa 2 Andares Original", score: 0.8 }],
+    });
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/admin/queue/items/item-1/link")) {
+        return Promise.resolve(jsonResponse(409, { error: "ALREADY_LINKED", message: "Item já foi vinculado." }));
+      }
+      return Promise.resolve(jsonResponse(200, { items: [item], total: 1, page: 1, pageSize: 20 }));
+    });
+    renderScreen(fetchMock);
+
+    fireEvent.click(await screen.findByTestId("link-suggestion-item-1-prod-1"));
+
+    expect(await screen.findByText("Item já foi vinculado.")).toBeTruthy();
+  });
+
+  it("mostra mensagem padrão quando vincular por sugestão falha por um erro que não é de domínio", async () => {
+    const item = unlinkedItem({
+      suggestions: [{ productId: "prod-1", productName: "Bolo Fake Rosa 2 Andares Original", score: 0.8 }],
+    });
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/admin/queue/items/item-1/link")) return Promise.reject(new Error("falha de rede"));
+      return Promise.resolve(jsonResponse(200, { items: [item], total: 1, page: 1, pageSize: 20 }));
+    });
+    renderScreen(fetchMock);
+
+    fireEvent.click(await screen.findByTestId("link-suggestion-item-1-prod-1"));
+
+    expect(await screen.findByText("Não foi possível vincular o item ao produto.")).toBeTruthy();
+  });
 });

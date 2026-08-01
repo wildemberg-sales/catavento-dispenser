@@ -215,4 +215,76 @@ describe("ImportDetailScreen", () => {
     expect(await screen.findByText("2 itens não puderam ser vinculados automaticamente.")).toBeTruthy();
     expect(await screen.findByText("ML-3")).toBeTruthy();
   });
+
+  it("mostra a mensagem do servidor quando carregar o lote falha com um erro de domínio", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(403, { error: "FORBIDDEN", message: "Sem permissão." }));
+    renderScreen(fetchMock);
+
+    expect(await screen.findByText("Sem permissão.")).toBeTruthy();
+  });
+
+  it("mostra mensagem padrão quando carregar o lote falha por um erro que não é de domínio", async () => {
+    const fetchMock = vi.fn().mockRejectedValue(new Error("falha de rede"));
+    renderScreen(fetchMock);
+
+    expect(await screen.findByText("Não foi possível carregar a importação.")).toBeTruthy();
+  });
+
+  it("mostra erro inline quando carregar as linhas importadas falha", async () => {
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/admin/imports/batch-1")) return Promise.resolve(jsonResponse(200, readyBatch));
+      if (url.includes("/rows")) return Promise.reject(new Error("falha de rede"));
+      if (url.includes("/unlinked")) return Promise.resolve(jsonResponse(200, { items: [], total: 0, page: 1, pageSize: 20 }));
+      throw new Error(`unexpected url: ${url}`);
+    });
+    renderScreen(fetchMock);
+
+    expect(await screen.findByText("Não foi possível carregar as linhas importadas.")).toBeTruthy();
+  });
+
+  it("mostra erro inline quando carregar os itens sem vínculo falha", async () => {
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/admin/imports/batch-1")) return Promise.resolve(jsonResponse(200, readyBatch));
+      if (url.includes("/rows")) return Promise.resolve(jsonResponse(200, { items: [], total: 0, page: 1, pageSize: 20 }));
+      if (url.includes("/unlinked")) return Promise.reject(new Error("falha de rede"));
+      throw new Error(`unexpected url: ${url}`);
+    });
+    renderScreen(fetchMock);
+
+    expect(await screen.findByText("Não foi possível carregar os itens sem vínculo.")).toBeTruthy();
+  });
+
+  it("mostra erro inline quando vincular por SKU falha", async () => {
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (init?.method === "POST" && url.endsWith("/admin/imports/batch-1/link")) {
+        return Promise.resolve(jsonResponse(409, { error: "ALREADY_LINKED", message: "Lote já foi processado." }));
+      }
+      return Promise.resolve(jsonResponseFor(url));
+    });
+    renderScreen(fetchMock);
+
+    await waitFor(() => expect(screen.getByTestId("link-by-sku-button")).toBeTruthy());
+    fireEvent.click(screen.getByTestId("link-by-sku-button"));
+
+    expect(await screen.findByText("Lote já foi processado.")).toBeTruthy();
+  });
+
+  it("mostra erro inline quando vincular manualmente uma sugestão falha", async () => {
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (init?.method === "POST" && url.endsWith("/admin/queue/items/item-1/link")) {
+        return Promise.reject(new Error("falha de rede"));
+      }
+      return Promise.resolve(jsonResponseFor(url));
+    });
+    renderScreen(fetchMock);
+
+    await waitFor(() => expect(screen.getByTestId("link-suggestion-prod-1")).toBeTruthy());
+    fireEvent.click(screen.getByTestId("link-suggestion-prod-1"));
+
+    expect(await screen.findByText("Não foi possível vincular o item ao produto.")).toBeTruthy();
+  });
 });

@@ -100,4 +100,18 @@ describe("ImportsListScreen", () => {
 
     expect(await screen.findByText("Assistente de nova importação")).toBeTruthy();
   });
+
+  it("mostra a mensagem do servidor quando a busca falha com um erro de domínio", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(403, { error: "FORBIDDEN", message: "Sem permissão." }));
+    renderScreen(fetchMock);
+
+    expect(await screen.findByText("Sem permissão.")).toBeTruthy();
+  });
+
+  it("mostra mensagem padrão quando a busca falha por um erro que não é de domínio", async () => {
+    const fetchMock = vi.fn().mockRejectedValue(new Error("falha de rede"));
+    renderScreen(fetchMock);
+
+    expect(await screen.findByText("Não foi possível carregar as importações.")).toBeTruthy();
+  });
 });

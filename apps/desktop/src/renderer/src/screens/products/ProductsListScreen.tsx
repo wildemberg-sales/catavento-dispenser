@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import type { ProductDTO } from "@catavento/contracts/products";
 import { useAuth } from "../../auth/AuthContext";
 import { createProductsApi } from "../../api/products.api";
+import { ApiClientError } from "../../api/client";
 import { Button } from "../../components/Button";
 import { Card } from "../../components/Card";
 import { PageHeader } from "../../components/PageHeader";
@@ -22,11 +23,16 @@ export function ProductsListScreen() {
   const [search, setSearch] = useState("");
   const [includeInactive, setIncludeInactive] = useState(false);
   const [products, setProducts] = useState<ProductDTO[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(() => {
     const params: { search?: string; includeInactive?: boolean } = { includeInactive };
     if (search.trim()) params.search = search.trim();
-    productsApi.list(params).then((result) => setProducts(result.items));
+    setError(null);
+    productsApi
+      .list(params)
+      .then((result) => setProducts(result.items))
+      .catch((err) => setError(err instanceof ApiClientError ? err.message : "Não foi possível carregar os produtos."));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [productsApi, search, includeInactive]);
 
@@ -35,13 +41,23 @@ export function ProductsListScreen() {
   }, [refresh]);
 
   async function handleDeactivate(id: string) {
-    await productsApi.deactivate(id);
-    refresh();
+    setError(null);
+    try {
+      await productsApi.deactivate(id);
+      refresh();
+    } catch (err) {
+      setError(err instanceof ApiClientError ? err.message : "Não foi possível desativar o produto.");
+    }
   }
 
   async function handleReactivate(id: string) {
-    await productsApi.reactivate(id);
-    refresh();
+    setError(null);
+    try {
+      await productsApi.reactivate(id);
+      refresh();
+    } catch (err) {
+      setError(err instanceof ApiClientError ? err.message : "Não foi possível reativar o produto.");
+    }
   }
 
   return (
@@ -78,6 +94,8 @@ export function ProductsListScreen() {
           Incluir inativos
         </label>
       </Card>
+
+      {error ? <p style={styles.error}>{error}</p> : null}
 
       {products === null ? null : products.length === 0 ? (
         <Card style={styles.emptyState}>
@@ -157,6 +175,7 @@ export function ProductsListScreen() {
 
 const styles: Record<string, React.CSSProperties> = {
   container: { display: "flex", flexDirection: "column", gap: 20 },
+  error: { ...typography.label, color: colors.danger, margin: 0 },
   filterCard: { padding: 16, display: "flex", flexWrap: "wrap", alignItems: "center", gap: 20 },
   filterLabel: {
     ...typography.label,
