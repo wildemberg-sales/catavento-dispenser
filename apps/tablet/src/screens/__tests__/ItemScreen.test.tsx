@@ -173,4 +173,40 @@ describe("ItemScreen", () => {
     const stored = await AsyncStorage.getItem("catavento.pendingActions");
     expect(JSON.parse(stored)).toEqual([{ queueItemId: "item-1", type: "problem", note: "Item quebrado" }]);
   });
+
+  it("rejeição definitiva do servidor (item cancelado por um admin) ao concluir NÃO enfileira nem navega — mostra o erro na tela", async () => {
+    const fetchMock = jest
+      .fn()
+      .mockResolvedValue(jsonResponse(403, { error: "NOT_YOUR_ITEM", message: "Este item não está atribuído a você." }));
+    const navigation = { replace: jest.fn() };
+    await renderItemScreen(fetchMock, navigation, rawItem);
+
+    await fireEvent.press(screen.getByTestId("item-complete-button"));
+
+    expect(await screen.findByTestId("item-submit-error")).toHaveTextContent("Este item não está atribuído a você.");
+    expect(navigation.replace).not.toHaveBeenCalled();
+
+    const AsyncStorage = require("@react-native-async-storage/async-storage");
+    const stored = await AsyncStorage.getItem("catavento.pendingActions");
+    expect(stored ? JSON.parse(stored) : []).toEqual([]);
+  });
+
+  it("rejeição definitiva do servidor ao reportar problema NÃO enfileira nem navega — mostra o erro na tela", async () => {
+    const fetchMock = jest
+      .fn()
+      .mockResolvedValue(jsonResponse(409, { error: "ALREADY_COMPLETED", message: "Este item já foi concluído." }));
+    const navigation = { replace: jest.fn() };
+    await renderItemScreen(fetchMock, navigation, rawItem);
+
+    await fireEvent.press(screen.getByTestId("item-report-button"));
+    await fireEvent.changeText(screen.getByTestId("item-problem-note"), "Item quebrado");
+    await fireEvent.press(screen.getByTestId("item-problem-submit"));
+
+    expect(await screen.findByTestId("item-submit-error")).toHaveTextContent("Este item já foi concluído.");
+    expect(navigation.replace).not.toHaveBeenCalled();
+
+    const AsyncStorage = require("@react-native-async-storage/async-storage");
+    const stored = await AsyncStorage.getItem("catavento.pendingActions");
+    expect(stored ? JSON.parse(stored) : []).toEqual([]);
+  });
 });

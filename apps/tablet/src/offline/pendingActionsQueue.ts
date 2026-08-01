@@ -1,3 +1,5 @@
+import { isPermanentRejection } from "../api/client";
+
 const STORAGE_KEY = "catavento.pendingActions";
 
 export type PendingAction = {
@@ -41,7 +43,14 @@ export function createPendingActionsQueue(deps: { storage: StorageLike }) {
       for (const action of actions) {
         try {
           await sender(action);
-        } catch {
+        } catch (err) {
+          // Uma ação pode ter sido enfileirada por uma falha de rede
+          // genuína, mas o item pode ter mudado de estado enquanto o
+          // dispositivo estava offline (ex.: um admin cancelou o item) — o
+          // reenvio então bate numa rejeição definitiva do servidor, não
+          // mais numa falha de conexão. Manter na fila nesse caso só geraria
+          // um retry infinito e silencioso a cada reconexão.
+          if (isPermanentRejection(err)) continue;
           remaining.push(action);
         }
       }

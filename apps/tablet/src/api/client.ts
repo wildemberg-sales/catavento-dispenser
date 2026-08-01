@@ -9,6 +9,18 @@ export class ApiClientError extends Error {
   }
 }
 
+// Distingue uma rejeição definitiva do servidor (ex.: item cancelado por um
+// admin enquanto o operador estava com ele em mãos — NotYourItemError, 403;
+// item já concluído — AlreadyCompletedError, 409) de uma falha de rede de
+// verdade. Reenviar uma rejeição permanente nunca muda o resultado — antes
+// disso existir, o app tratava os dois casos como "sem conexão" e
+// reenfileirava pra tentar de novo pra sempre, sem nunca avisar ninguém.
+// 401 fica de fora de propósito: é tratado à parte pelo fluxo de refresh de
+// token do próprio client, não é uma rejeição ligada ao estado do item.
+export function isPermanentRejection(error: unknown): boolean {
+  return error instanceof ApiClientError && error.statusCode >= 400 && error.statusCode < 500 && error.statusCode !== 401;
+}
+
 type Tokens = { accessToken: string; refreshToken: string };
 
 export type ApiClientConfig = {

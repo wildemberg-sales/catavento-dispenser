@@ -5,6 +5,7 @@ import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useAuth } from "../auth/AuthContext";
 import { createQueueApi } from "../api/queue.api";
+import { isPermanentRejection } from "../api/client";
 import { createPendingActionsQueue } from "../offline/pendingActionsQueue";
 import { PrimaryButton } from "../components/PrimaryButton";
 import { ProductImageCarousel } from "../components/ProductImageCarousel";
@@ -23,15 +24,26 @@ export function ItemScreen({ navigation, route }: NativeStackScreenProps<RootSta
   const [note, setNote] = useState("");
   const [noteError, setNoteError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   async function handleComplete() {
+    setSubmitError(null);
     setSubmitting(true);
     try {
       await queueApi.complete(item.id);
-    } catch {
+      navigation.replace("Main");
+    } catch (err) {
+      if (isPermanentRejection(err)) {
+        // O servidor já respondeu definitivamente que esse item não pode
+        // mais ser concluído por este operador (ex.: um admin cancelou
+        // enquanto estava em mãos) — reenfileirar pra tentar de novo nunca
+        // mudaria esse resultado. Fica na tela pra avisar, em vez de sumir
+        // silenciosamente como se tivesse dado certo.
+        setSubmitError((err as Error).message);
+        setSubmitting(false);
+        return;
+      }
       await pendingActionsQueue.enqueue({ queueItemId: item.id, type: "complete" });
-    } finally {
-      setSubmitting(false);
       navigation.replace("Main");
     }
   }
@@ -42,13 +54,18 @@ export function ItemScreen({ navigation, route }: NativeStackScreenProps<RootSta
       return;
     }
     setNoteError(null);
+    setSubmitError(null);
     setSubmitting(true);
     try {
       await queueApi.problem(item.id, note);
-    } catch {
+      navigation.replace("Main");
+    } catch (err) {
+      if (isPermanentRejection(err)) {
+        setSubmitError((err as Error).message);
+        setSubmitting(false);
+        return;
+      }
       await pendingActionsQueue.enqueue({ queueItemId: item.id, type: "problem", note });
-    } finally {
-      setSubmitting(false);
       navigation.replace("Main");
     }
   }
@@ -89,6 +106,11 @@ export function ItemScreen({ navigation, route }: NativeStackScreenProps<RootSta
         </ScrollView>
 
         <View style={styles.bottomBar}>
+          {submitError ? (
+            <Text testID="item-submit-error" style={styles.error}>
+              {submitError}
+            </Text>
+          ) : null}
           {reporting ? (
             <Card style={styles.reportBox}>
               <TextInput

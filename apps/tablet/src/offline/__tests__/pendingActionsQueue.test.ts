@@ -1,4 +1,5 @@
 import { createPendingActionsQueue } from "../pendingActionsQueue";
+import { ApiClientError } from "../../api/client";
 
 function createStorageMock() {
   const store = new Map<string, string>();
@@ -50,6 +51,28 @@ describe("createPendingActionsQueue", () => {
     await queue.enqueue({ queueItemId: "item-1", type: "complete" });
 
     const sender = jest.fn().mockRejectedValue(new Error("ainda sem rede"));
+    await queue.drain(sender);
+
+    expect(await queue.list()).toHaveLength(1);
+  });
+
+  it("descarta a ação (não mantém pra retry) quando o reenvio bate numa rejeição definitiva do servidor (ex.: item cancelado enquanto offline)", async () => {
+    const storage = createStorageMock();
+    const queue = createPendingActionsQueue({ storage });
+    await queue.enqueue({ queueItemId: "item-1", type: "complete" });
+
+    const sender = jest.fn().mockRejectedValue(new ApiClientError("Este item não está atribuído a você.", "NOT_YOUR_ITEM", 403));
+    await queue.drain(sender);
+
+    expect(await queue.list()).toHaveLength(0);
+  });
+
+  it("mantém a ação na fila quando o reenvio falha com 401 (sessão expirada, não é uma rejeição ligada ao item)", async () => {
+    const storage = createStorageMock();
+    const queue = createPendingActionsQueue({ storage });
+    await queue.enqueue({ queueItemId: "item-1", type: "complete" });
+
+    const sender = jest.fn().mockRejectedValue(new ApiClientError("Sessão expirada.", "SESSION_EXPIRED", 401));
     await queue.drain(sender);
 
     expect(await queue.list()).toHaveLength(1);
