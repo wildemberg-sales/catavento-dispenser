@@ -108,6 +108,9 @@ Login com `operador1` / `operador123`.
 
 ## Rodando em produção
 
+> Guia completo (proxy reverso/TLS, backup, checklist, configuração do build
+> Android que falta) em [`DEPLOY.md`](./DEPLOY.md). Esta seção é o resumo.
+
 ### Backend (`apps/server`)
 
 Via Docker, com `docker-compose.prod.yml` — um compose **autocontido** (não depende do `docker-compose.yml` de dev nem do `.env` de dev), pensado pra copiar pro servidor e rodar lá:
