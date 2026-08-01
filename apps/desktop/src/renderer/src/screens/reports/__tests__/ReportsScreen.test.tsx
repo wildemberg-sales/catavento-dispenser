@@ -128,6 +128,53 @@ describe("ReportsScreen", () => {
     expect(await screen.findByText("Bolo Fake Rosa")).toBeTruthy();
   });
 
+  it("busca de operador: digitar filtra as sugestões, e clicar numa sugestão seleciona o operador", async () => {
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/admin/analytics/by-operator")) {
+        return Promise.resolve(jsonResponse(200, { items: [operatorRow], total: 1, page: 1, pageSize: 20 }));
+      }
+      if (url.includes("/admin/reports/operator/op-2/items")) {
+        return Promise.resolve(jsonResponse(200, { items: [], total: 0, page: 1, pageSize: 20 }));
+      }
+      if (url.includes("/admin/reports/operator/op-2")) {
+        return Promise.resolve(jsonResponse(200, { ...operatorReport, operator: { id: "op-2", username: "op2", displayName: "Beltrana" } }));
+      }
+      if (url.includes("/admin/users")) {
+        return Promise.resolve(
+          jsonResponse(200, {
+            items: [
+              { id: "op-1", username: "op1", role: "operator", displayName: "Fulano", isActive: true, createdAt: new Date().toISOString() },
+              { id: "op-2", username: "op2", role: "operator", displayName: "Beltrana", isActive: true, createdAt: new Date().toISOString() },
+            ],
+            total: 2,
+            page: 1,
+            pageSize: 100,
+          })
+        );
+      }
+      return Promise.reject(new Error(`unexpected url: ${url}`));
+    });
+    renderScreen(fetchMock);
+    await screen.findByText("Fulano");
+
+    // busca sempre com o teto de pageSize permitido pela API — antes o
+    // select ficava limitado ao padrão de 20 e escondia o resto sem avisar.
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining("pageSize=100"), expect.anything()));
+
+    fireEvent.click(screen.getByTestId("tab-operator-report"));
+    const search = await screen.findByTestId("operator-search");
+    fireEvent.change(search, { target: { value: "Bel" } });
+
+    expect(await screen.findByTestId("operator-suggestion-op-2")).toBeTruthy();
+    expect(screen.queryByTestId("operator-suggestion-op-1")).toBeNull();
+
+    fireEvent.click(screen.getByTestId("operator-suggestion-op-2"));
+
+    expect(screen.queryByTestId("operator-suggestions")).toBeNull();
+    expect((search as HTMLInputElement).value).toBe("Beltrana");
+  });
+
   it("refaz a consulta quando a data é alterada", async () => {
     const fetchMock = buildFetchMock();
     renderScreen(fetchMock);
@@ -206,8 +253,9 @@ describe("ReportsScreen", () => {
     await screen.findByText("Fulano");
 
     fireEvent.click(screen.getByTestId("tab-operator-report"));
-    await screen.findByTestId("operator-select");
-    fireEvent.change(screen.getByTestId("operator-select"), { target: { value: "op-1" } });
+    await screen.findByTestId("operator-search");
+    fireEvent.change(screen.getByTestId("operator-search"), { target: { value: "Fulano" } });
+    fireEvent.click(await screen.findByTestId("operator-suggestion-op-1"));
 
     expect(await screen.findByText("- de 8")).toBeTruthy();
     expect(screen.getAllByText("-").length).toBeGreaterThanOrEqual(3);
@@ -242,8 +290,9 @@ describe("ReportsScreen", () => {
     await screen.findByText("Fulano");
 
     fireEvent.click(screen.getByTestId("tab-operator-report"));
-    await screen.findByTestId("operator-select");
-    fireEvent.change(screen.getByTestId("operator-select"), { target: { value: "op-1" } });
+    await screen.findByTestId("operator-search");
+    fireEvent.change(screen.getByTestId("operator-search"), { target: { value: "Fulano" } });
+    fireEvent.click(await screen.findByTestId("operator-suggestion-op-1"));
 
     expect((await screen.findAllByText("Bolo Fake Rosa")).length).toBeGreaterThan(0);
     expect(screen.getByText("2 de 8")).toBeTruthy();
@@ -254,8 +303,9 @@ describe("ReportsScreen", () => {
     await screen.findByText("Fulano");
 
     fireEvent.click(screen.getByTestId("tab-operator-report"));
-    await screen.findByTestId("operator-select");
-    fireEvent.change(screen.getByTestId("operator-select"), { target: { value: "op-1" } });
+    await screen.findByTestId("operator-search");
+    fireEvent.change(screen.getByTestId("operator-search"), { target: { value: "Fulano" } });
+    fireEvent.click(await screen.findByTestId("operator-suggestion-op-1"));
 
     expect((await screen.findAllByText("5%")).length).toBe(2);
     expect(screen.getByText("0.88")).toBeTruthy();
@@ -270,8 +320,9 @@ describe("ReportsScreen", () => {
     await screen.findByText("Fulano");
 
     fireEvent.click(screen.getByTestId("tab-operator-report"));
-    await screen.findByTestId("operator-select");
-    fireEvent.change(screen.getByTestId("operator-select"), { target: { value: "op-1" } });
+    await screen.findByTestId("operator-search");
+    fireEvent.change(screen.getByTestId("operator-search"), { target: { value: "Fulano" } });
+    fireEvent.click(await screen.findByTestId("operator-suggestion-op-1"));
 
     expect(await screen.findByText("Foto não bate com o pedido")).toBeTruthy();
     expect(screen.getByText("Problema")).toBeTruthy();

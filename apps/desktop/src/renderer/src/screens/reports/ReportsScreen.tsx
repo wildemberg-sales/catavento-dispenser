@@ -103,6 +103,8 @@ export function ReportsScreen() {
   const [throughputPoints, setThroughputPoints] = useState<ThroughputPoint[] | null>(null);
   const [operators, setOperators] = useState<{ id: string; displayName: string }[]>([]);
   const [selectedOperatorId, setSelectedOperatorId] = useState("");
+  const [operatorQuery, setOperatorQuery] = useState("");
+  const [showOperatorSuggestions, setShowOperatorSuggestions] = useState(false);
   const [operatorReport, setOperatorReport] = useState<OperatorReport | null>(null);
   const [reportItems, setReportItems] = useState<OperatorReportItem[] | null>(null);
   const [reportItemsTotal, setReportItemsTotal] = useState(0);
@@ -111,14 +113,37 @@ export function ReportsScreen() {
   const [exporting, setExporting] = useState(false);
 
   useEffect(() => {
+    // Antes buscava sem paginação (pageSize padrão de 20) — com mais de 20
+    // operadores cadastrados, o select simplesmente não mostrava o resto,
+    // sem nenhuma indicação de que havia mais gente. 100 é o teto que a API
+    // aceita (mesmo padrão de "buscar o máximo permitido" já usado em
+    // QueueManagementScreen).
     usersApi
-      .list({ role: "operator" })
+      .list({ role: "operator", pageSize: 100 })
       .then((result) => setOperators(result.items))
       .catch(() => {
         // A seleção de operador na aba de relatório individual fica vazia;
         // não vale a pena travar a tela inteira por causa disso.
       });
   }, [usersApi]);
+
+  const filteredOperators = useMemo(() => {
+    const q = operatorQuery.trim().toLowerCase();
+    const matches = q ? operators.filter((operator) => operator.displayName.toLowerCase().includes(q)) : operators;
+    return matches.slice(0, 8);
+  }, [operators, operatorQuery]);
+
+  function handleOperatorQueryChange(value: string) {
+    setOperatorQuery(value);
+    setSelectedOperatorId("");
+    setShowOperatorSuggestions(true);
+  }
+
+  function handleSelectOperator(operator: { id: string; displayName: string }) {
+    setSelectedOperatorId(operator.id);
+    setOperatorQuery(operator.displayName);
+    setShowOperatorSuggestions(false);
+  }
 
   const refresh = useCallback(() => {
     setError(null);
@@ -351,19 +376,35 @@ export function ReportsScreen() {
           <Card style={styles.filterCard}>
             <label style={styles.filterLabel}>
               Operador
-              <select
-                data-testid="operator-select"
-                className="field"
-                value={selectedOperatorId}
-                onChange={(event) => setSelectedOperatorId(event.target.value)}
-              >
-                <option value="">Selecione…</option>
-                {operators.map((operator) => (
-                  <option key={operator.id} value={operator.id}>
-                    {operator.displayName}
-                  </option>
-                ))}
-              </select>
+              <div style={styles.comboboxWrapper}>
+                <input
+                  data-testid="operator-search"
+                  className="field"
+                  type="text"
+                  placeholder="Buscar operador…"
+                  value={operatorQuery}
+                  onChange={(event) => handleOperatorQueryChange(event.target.value)}
+                  onFocus={() => setShowOperatorSuggestions(true)}
+                  onBlur={() => setShowOperatorSuggestions(false)}
+                />
+                {showOperatorSuggestions && filteredOperators.length > 0 ? (
+                  <ul style={styles.suggestionList} data-testid="operator-suggestions">
+                    {filteredOperators.map((operator) => (
+                      <li key={operator.id}>
+                        <button
+                          type="button"
+                          data-testid={`operator-suggestion-${operator.id}`}
+                          style={styles.suggestionItem}
+                          onMouseDown={(event) => event.preventDefault()}
+                          onClick={() => handleSelectOperator(operator)}
+                        >
+                          {operator.displayName}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+              </div>
             </label>
           </Card>
 
@@ -512,4 +553,33 @@ const styles: Record<string, React.CSSProperties> = {
   statValue: { ...typography.sectionTitle, color: colors.secondary },
   paginationBar: { display: "flex", alignItems: "center", justifyContent: "center", gap: 16, padding: "12px 0 0" },
   paginationLabel: { ...typography.label, color: colors.textMuted },
+  comboboxWrapper: { position: "relative", minWidth: 260 },
+  suggestionList: {
+    position: "absolute",
+    top: "calc(100% + 4px)",
+    left: 0,
+    right: 0,
+    margin: 0,
+    padding: 6,
+    listStyle: "none",
+    backgroundColor: colors.surface,
+    border: `1px solid ${colors.border}`,
+    borderRadius: 10,
+    boxShadow: `0 8px 24px ${colors.shadowStrong}`,
+    zIndex: 10,
+    maxHeight: 240,
+    overflowY: "auto",
+  },
+  suggestionItem: {
+    ...typography.body,
+    display: "block",
+    width: "100%",
+    textAlign: "left",
+    padding: "8px 10px",
+    border: "none",
+    background: "none",
+    color: colors.text,
+    cursor: "pointer",
+    borderRadius: 6,
+  },
 };
